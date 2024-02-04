@@ -1,6 +1,5 @@
 mod errors;
 
-use pretty::halt;
 use recs::errors::RecsRecivedErrors;
 use recs::{decrypt_raw, encrypt_raw, initialize, insert, ping, remove, retrive, update_map};
 use std::io::{Read, Write};
@@ -13,7 +12,7 @@ fn main() {
     // Make sure we are running as the dusa user
 
     if unsafe { libc::geteuid() } != 100 {
-        halt(&format!("Must be running as the dusa user"));
+        println!("{}", &format!("Must be running as the dusa user"));
     }
 
     unsafe { recs::DEBUGGING = Some(false) }; // Adding more logging data
