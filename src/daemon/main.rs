@@ -17,10 +17,6 @@ fn main() {
 
     unsafe { recs::DEBUGGING = Some(false) }; // Adding more logging data
     unsafe { recs::PROGNAME = "dusa-server" };
-    match initialize() {
-        Ok(_) => (),
-        Err(e) => panic!("{:?}", RecsRecivedErrors::display(e, false)),
-    }
 
     // Clean up existing socket file if it exists
     let socket_path: &str = "/var/run/dusa.sock";
@@ -57,6 +53,11 @@ fn handle_client(mut stream: UnixStream) {
 }
 
 fn process_command(command_str: String) -> String {
+    // Ensure data is initialized before processing command
+    match initialize() {
+        Ok(_) => (),
+        Err(e) => panic!("{:?}", RecsRecivedErrors::display(e, false)),
+    }
     let parts: Vec<&str> = command_str.split_whitespace().collect();
 
     match parts.get(0) {
