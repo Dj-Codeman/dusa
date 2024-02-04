@@ -1,0 +1,15 @@
+[Unit]
+Description=dusa encryption store and container
+After=network.target
+
+[Service]
+User=dusa
+Group=dusa
+WorkingDirectory=/usr/recs
+ExecStart=/usr/bin/dusad
+Restart=always
+StandardOutput=append:/var/log/dusad.log
+StandardError=append:/var/log/dusad.log
+
+[Install]
+WantedBy=multi-user.target
