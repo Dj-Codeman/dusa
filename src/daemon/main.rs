@@ -1,31 +1,44 @@
 mod errors;
 
+use pretty::{notice, output};
 use recs::errors::RecsRecivedErrors;
 use recs::{decrypt_raw, encrypt_raw, initialize, insert, ping, remove, retrive, update_map};
 use std::io::{Read, Write};
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::thread;
+use std::{fs, thread};
 // use recs::*;
 use system::del_file;
 
 fn main() {
     // Make sure we are running as the dusa user
+    if unsafe { libc::geteuid() } != 101 {
+        if unsafe { libc::setuid(101) } != 0 {
+            output("RED", &format!("Failed to set UID"));
+        } else {
+            notice("Now running as dusa");
+        }
+    }    
 
-    if unsafe { libc::geteuid() } != 100 {
-        println!("{}", &format!("Must be running as the dusa user"));
-    }
-
-    unsafe { recs::DEBUGGING = Some(false) }; // Adding more logging data
+    // Initializing the recs lib properly
+    recs::set_debug(true);
     unsafe { recs::PROGNAME = "dusa-server" };
 
-    // Clean up existing socket file if it exists
-    let socket_path: &str = "/var/run/dusa.sock";
-    let _ = del_file(socket_path);
+    // Defining where the socket file is 
+    let socket_path: &str = "/var/run/dusa/dusa.sock";
 
+    // Setting up the new socket file
+    let _ = del_file(socket_path);
     let listener: UnixListener = match UnixListener::bind(socket_path) {
         Ok(d) => d,
-        Err(e) => panic!("{}", e),
+        Err(e) => panic!("Socket binding error: {}", e),
     };
+
+    // Changing the permissions the socket
+    let socket_metadata = fs::metadata(socket_path).unwrap();
+    let mut permissions = socket_metadata.permissions();
+    permissions.set_mode(0o770);  // Set desired permissions
+    fs::set_permissions(socket_path, permissions).unwrap();
 
     for stream in listener.incoming() {
         match stream {
@@ -56,7 +69,7 @@ fn process_command(command_str: String) -> String {
     // Ensure data is initialized before processing command
     match initialize() {
         Ok(_) => (),
-        Err(e) => panic!("{:?}", RecsRecivedErrors::display(e, false)),
+        Err(e) => panic!("Error processing command: {:?}", RecsRecivedErrors::display(e, false)),
     }
     let parts: Vec<&str> = command_str.split_whitespace().collect();
 
