@@ -1,6 +1,8 @@
+use nix::unistd::{chown, Gid, Uid};
 use pretty::*;
 use recs::errors::{RecsError, RecsErrorType, RecsRecivedErrors};
 use std::env;
+use std::fs::canonicalize;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::process::exit;
@@ -44,7 +46,7 @@ fn main() {
         },
         (Some(command), Some(owner), Some(name), None) => ProgramMode::Manage(command, owner, name),
         (Some(command), Some(owner), Some(name), Some(path)) => match command.as_str() {
-            "write" => ProgramMode::Writing(command, owner, name, path),
+            "insert" => ProgramMode::Writing(command, owner, name, path),
             _ => ProgramMode::Help,
         },
         (_, _, _, _) => ProgramMode::Invalid,
@@ -53,6 +55,7 @@ fn main() {
     match mode {
         ProgramMode::Writing(command, owner, name, path) => {
             let message = format!("{} {} {} {}", command, path, owner, name);
+            let _ = chown(&canonicalize(&path).unwrap(), Some(Uid::from_raw(101)), Some(Gid::from_raw(101))); // What 
             match send_command(message) {
                 Ok(response) => pass(&response),
                 Err(e) => recs::errors::RecsRecivedErrors::display(e, true),

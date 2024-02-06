@@ -1,5 +1,5 @@
 [package]
-name = "duse"
+name = "dusa"
 version = "0.1.0"
 edition = "2021"
 authors = ["Darrion <dwhitfield@ramfield.net>"]
@@ -8,6 +8,7 @@ authors = ["Darrion <dwhitfield@ramfield.net>"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+nix = "0.20"
 recs = { git = "https://github.com/Dj-Codeman/recs.git" }
 logging = { git = "https://github.com/Dj-Codeman/logger.git" }
 system = { git = "https://github.com/Dj-Codeman/system.git" }

@@ -1,6 +1,5 @@
 [Unit]
 Description=dusa encryption store and container
-After=network.target
 
 [Service]
 User=dusa

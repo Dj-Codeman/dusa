@@ -1,28 +1,36 @@
 mod errors;
-
+use nix::unistd::{chown, setgid, setuid, Gid, Uid};
+use nix::NixPath;
 use pretty::{notice, output};
 use recs::errors::RecsRecivedErrors;
 use recs::{decrypt_raw, encrypt_raw, initialize, insert, ping, remove, retrive, update_map};
+use std::fs::canonicalize;
 use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::{fs, thread};
-// use recs::*;
 use system::del_file;
 
 fn main() {
     // Make sure we are running as the dusa user
-    if unsafe { libc::geteuid() } != 101 {
-        if unsafe { libc::setuid(101) } != 0 {
-            output("RED", &format!("Failed to set UID"));
-        } else {
-            notice("Now running as dusa");
-        }
-    }    
+    let uid = Uid::from_raw(101);
+    let gid = Gid::from_raw(101);
+
+    setuid(uid);
+    setgid(gid);
+
+
+    // if unsafe { libc::geteuid() } != 101 {
+    //     if unsafe { libc::setuid(101) } != 0 {
+    //         output("RED", &format!("Failed to set UID"));
+    //     } else {
+    //         notice("Now running as dusa");
+    //     }
+    // }    
 
     // Initializing the recs lib properly
     recs::set_debug(true);
-    unsafe { recs::PROGNAME = "dusa-server" };
+    recs::set_prog("dusa");
 
     // Defining where the socket file is 
     let socket_path: &str = "/var/run/dusa/dusa.sock";
@@ -69,8 +77,10 @@ fn process_command(command_str: String) -> String {
     // Ensure data is initialized before processing command
     match initialize() {
         Ok(_) => (),
-        Err(e) => panic!("Error processing command: {:?}", RecsRecivedErrors::display(e, false)),
+        Err(e) => 
+            RecsRecivedErrors::display(e, true),
     }
+
     let parts: Vec<&str> = command_str.split_whitespace().collect();
 
     match parts.get(0) {
@@ -78,6 +88,7 @@ fn process_command(command_str: String) -> String {
             let filename = parts.get(1).unwrap_or(&"").to_string();
             let owner = parts.get(2).unwrap_or(&"").to_string();
             let name = parts.get(3).unwrap_or(&"").to_string();
+            // Taking ownership of the file 
             match insert(filename, owner, name) {
                 Ok(_) => "Inserted Successfully".to_string(),
                 Err(e) => panic!("{:?}", RecsRecivedErrors::display(e, false)),
