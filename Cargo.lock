@@ -226,6 +226,7 @@ dependencies = [
  "pretty",
  "recs",
  "system",
+ "users",
 ]
 
 [[package]]
@@ -888,6 +889,15 @@ name = "untrusted"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
+
+[[package]]
+name = "users"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c72f4267aea0c3ec6d07eaabea6ead7c5ddacfafc5e22bcf8d186706851fb4cf"
+dependencies = [
+ "libc 0.2.153",
+]
 
 [[package]]
 name = "version_check"

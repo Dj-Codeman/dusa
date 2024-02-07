@@ -9,6 +9,7 @@ authors = ["Darrion <dwhitfield@ramfield.net>"]
 
 [dependencies]
 nix = "0.20"
+users = "0.9.0"
 recs = { git = "https://github.com/Dj-Codeman/recs.git" }
 logging = { git = "https://github.com/Dj-Codeman/logger.git" }
 system = { git = "https://github.com/Dj-Codeman/system.git" }

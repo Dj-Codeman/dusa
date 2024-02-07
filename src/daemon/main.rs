@@ -1,4 +1,5 @@
 mod errors;
+use users::{UsersCache, Users, Groups};
 use nix::unistd::{chown, setgid, setuid, Gid, Uid};
 use nix::NixPath;
 use pretty::{notice, output};
@@ -13,11 +14,15 @@ use system::del_file;
 
 fn main() {
     // Make sure we are running as the dusa user
-    let uid = Uid::from_raw(101);
-    let gid = Gid::from_raw(101);
+	let user_cache: UsersCache = UsersCache::new();
+	let dusa_uid = user_cache.get_user_by_name("dusa").unwrap();
+	let dusa_gid = user_cache.get_group_by_name("dusa").unwrap();
+	
+    let uid = Uid::from_raw(dusa_uid.uid());
+    let gid = Gid::from_raw(dusa_gid.gid());
 
-    setuid(uid);
-    setgid(gid);
+    setuid(uid.into());
+    setgid(gid.into());
 
 
     // if unsafe { libc::geteuid() } != 101 {
@@ -53,10 +58,11 @@ fn main() {
             Ok(stream) => {
                 // Spawn a new thread or use async/await to handle each incoming connection
                 thread::spawn(|| handle_client(stream));
-            }
+            },
             Err(e) => eprintln!("Error accepting connection: {}", e),
         }
     }
+    
 }
 
 fn handle_client(mut stream: UnixStream) {
@@ -91,7 +97,9 @@ fn process_command(command_str: String) -> String {
             // Taking ownership of the file 
             match insert(filename, owner, name) {
                 Ok(_) => "Inserted Successfully".to_string(),
-                Err(e) => panic!("{:?}", RecsRecivedErrors::display(e, false)),
+                Err(e) => {
+                RecsRecivedErrors::display(e, false);
+                panic!(); },
             }
         }
         Some(&"retrieve") => {

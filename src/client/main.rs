@@ -1,3 +1,4 @@
+use users::{UsersCache, Users, Groups};
 use nix::unistd::{chown, Gid, Uid};
 use pretty::*;
 use recs::errors::{RecsError, RecsErrorType, RecsRecivedErrors};
@@ -11,10 +12,13 @@ fn main() {
     // Parse command-line arguments
     let args: Vec<String> = env::args().collect();
 
+	// Getting a cached list of users from the os
+	let user_cache: UsersCache  = UsersCache::new();
+
     // Define mode based on arguments given
     enum ProgramMode {
         Writing(String, String, String, String),
-        Manage(String, String, String),
+        Manage(String, String, String), // 
         Text(String),
         Help,
         Invalid,
@@ -55,7 +59,12 @@ fn main() {
     match mode {
         ProgramMode::Writing(command, owner, name, path) => {
             let message = format!("{} {} {} {}", command, path, owner, name);
-            let _ = chown(&canonicalize(&path).unwrap(), Some(Uid::from_raw(101)), Some(Gid::from_raw(101))); // What 
+			let dusa_uid = user_cache.get_user_by_name("dusa").unwrap();
+			let dusa_gid = user_cache.get_group_by_name("dusa").unwrap();
+			notice(&format!("{:?}", &dusa_gid.gid()));
+			notice(&format!("{:?}", &dusa_uid.uid()));
+
+            chown(&canonicalize(&path).unwrap(), Some(Uid::from_raw(dusa_uid.uid())), Some(Gid::from_raw(dusa_gid.gid()))).unwrap(); // What 
             match send_command(message) {
                 Ok(response) => pass(&response),
                 Err(e) => recs::errors::RecsRecivedErrors::display(e, true),
