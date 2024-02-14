@@ -1,129 +1,253 @@
-use users::{UsersCache, Users, Groups};
+#[path = "../shared/shared.rs"]
+mod shared;
+use crate::shared::get_id;
+use std::path::{Path, PathBuf};
 use nix::unistd::{chown, Gid, Uid};
 use pretty::*;
 use recs::errors::{RecsError, RecsErrorType, RecsRecivedErrors};
-use std::env;
+// use shared::convert_to_string;
+// use std::env;
 use std::fs::canonicalize;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::process::exit;
+use system::is_path;
+// use users::{Groups, Users, UsersCache};
 
 fn main() {
     // Parse command-line arguments
-    let args: Vec<String> = env::args().collect();
+    let args: Vec<String> = std::env::args().collect();
 
-	// Getting a cached list of users from the os
-	let user_cache: UsersCache  = UsersCache::new();
+    // Define mode based on arguments given
+    let (command, arg_1, arg_2, arg_3) = parse_arguments(&args);
 
     // Define mode based on arguments given
     enum ProgramMode {
-        Writing(String, String, String, String),
-        Manage(String, String, String), // 
-        Text(String),
+        StoreFile(String, String, String),
+        RetrieveFile(String, String),
+        EncryptText(String),
+        DecryptText(String, String, String),
+        RemoveFile(String, String),
+        // Manage(String, String, String), //
+        // Text(String),
         Help,
         Invalid,
     }
 
-    let (command, owner, name, path): (
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    ) = if args.len() > 0 {
-        let command: Option<String> = args.get(1).map(|data| data.to_owned());
-        let owner: Option<String> = args.get(2).map(|data| data.to_owned());
-        let name: Option<String> = args.get(3).map(|data| data.to_owned());
-        let path: Option<String> = args.get(4).map(|data| data.to_owned());
-
-        (command, owner, name, path)
-    } else {
-        (None, None, None, None)
-    };
-
     // Parse command given
-    let mode: ProgramMode = match (command, owner, name, path) {
-        (None, None, None, None) => ProgramMode::Help,
-        (Some(_), None, None, None) => ProgramMode::Help,
-        (Some(command), Some(text_data), None, None) => match command.as_str() {
-            "text" => ProgramMode::Text(text_data),
+    let mode: ProgramMode = match command.as_ref() {
+        Some(cmd) => match cmd.as_str() {
+            "encrypt-file" => match (arg_1, arg_2, arg_3) {
+                (Some(owner), Some(name), Some(path)) => ProgramMode::StoreFile(owner, name, path),
+                _ => ProgramMode::Invalid,
+            },
+            "decrypt-file" => match (arg_1, arg_2) {
+                (Some(owner), Some(name)) => ProgramMode::RetrieveFile(owner, name),
+                _ => ProgramMode::Invalid,
+            },
+            "encrypt-text" => match arg_1 {
+                Some(data) => ProgramMode::EncryptText(data),
+                None => ProgramMode::Invalid,
+            },
+            "decrypt-text" => match (arg_1, arg_2, arg_3) {
+                // data key chunk
+                (Some(data), Some(key), Some(chunk)) => ProgramMode::DecryptText(data, key, chunk),
+                _ => ProgramMode::Invalid,
+            },
+            "remove-file" => match (arg_1, arg_2) {
+                (Some(owner), Some(name)) => ProgramMode::RemoveFile(owner, name),
+                _ => ProgramMode::Invalid,
+            },
+            "list-file" => match (arg_1, arg_2) {
+                (Some(_), Some(_)) => todo!(),
+                _ => ProgramMode::Invalid,
+            },
+            "status" => ProgramMode::Invalid,
             _ => ProgramMode::Help,
         },
-        (Some(command), Some(owner), Some(name), None) => ProgramMode::Manage(command, owner, name),
-        (Some(command), Some(owner), Some(name), Some(path)) => match command.as_str() {
-            "insert" => ProgramMode::Writing(command, owner, name, path),
-            _ => ProgramMode::Help,
-        },
-        (_, _, _, _) => ProgramMode::Invalid,
+        None => ProgramMode::Invalid,
     };
 
+    // Communicating with server after parsing
     match mode {
-        ProgramMode::Writing(command, owner, name, path) => {
-            let message = format!("{} {} {} {}", command, path, owner, name);
-			let dusa_uid = user_cache.get_user_by_name("dusa").unwrap();
-			let dusa_gid = user_cache.get_group_by_name("dusa").unwrap();
-			notice(&format!("{:?}", &dusa_gid.gid()));
-			notice(&format!("{:?}", &dusa_uid.uid()));
+        ProgramMode::StoreFile(owner, name, path) => {
+            // ensuring path exists
+            let safe_path: String = match is_path(&path) {
+                true => path,
+                false => panic!("Path specified isn't valid"),
+            };
 
-            chown(&canonicalize(&path).unwrap(), Some(Uid::from_raw(dusa_uid.uid())), Some(Gid::from_raw(dusa_gid.gid()))).unwrap(); // What 
+            let absolute_path = match canonicalize(&safe_path.to_owned()) {
+                Ok(d) => d,
+                Err(e) => panic!("{}", e.to_string()),
+            };
+
+            // Changing owner ship of the file
+            let (uid, gid) =  get_id();
+            set_file_ownership(&absolute_path, uid, gid);
+
+            // Pusing commands to the array
+            let mut command_data: Vec<String> = vec![];
+            command_data.push(String::from("insert"));
+            command_data.push(owner);
+            command_data.push(name);
+            command_data.push(absolute_path.into_os_string().into_string().unwrap());
+
+            // Creating the message
+            let message: String = create_message(command_data);
+
+            // Sending the message
             match send_command(message) {
-                Ok(response) => pass(&response),
-                Err(e) => recs::errors::RecsRecivedErrors::display(e, true),
+                Ok(d) => notice(&d),
+                Err(e) => recs::errors::RecsRecivedErrors::display(e, false),
             }
-        }
+        },
 
-        ProgramMode::Manage(command, owner, name) => {
-            let message = format!("{} {} {}", command, owner, name);
+        ProgramMode::RetrieveFile(owner, name) => {
+            let mut command_data: Vec<String> = vec![];
+            command_data.push(String::from("retrieve"));
+            command_data.push(owner);
+            command_data.push(name);
+
+            let message: String = create_message(command_data);
+
             match send_command(message) {
-                Ok(response) => pass(&response),
-                Err(e) => recs::errors::RecsRecivedErrors::display(e, true),
+                Ok(d) => notice(&d),
+                Err(e) => recs::errors::RecsRecivedErrors::display(e, false),
             }
-        }
+        },
 
-        ProgramMode::Text(_) => {
-            warn("Error: The 'text' command is not supported. Encryption is handled server-side.");
-            exit(1);
-        }
+        ProgramMode::EncryptText(data) => {
+            let mut command_data: Vec<String> = vec![];
+            command_data.push(String::from("encrypt"));
+            command_data.push(data);
 
+            let message: String = create_message(command_data);
+            notice(&message);
+
+            match send_command(message) {
+                Ok(d) => notice(&d),
+                Err(e) => recs::errors::RecsRecivedErrors::display(e, false),
+            }
+        },
+
+        ProgramMode::DecryptText(data, key, chunk) => {
+            let mut command_data: Vec<String> = vec![];
+            command_data.push(String::from("decrypt"));
+            command_data.push(data);
+            command_data.push(key);
+            command_data.push(chunk);
+
+            let message: String = create_message(command_data);
+
+            match send_command(message) {
+                Ok(d) => notice(&d),
+                Err(e) => recs::errors::RecsRecivedErrors::display(e, false),
+            }
+        },
+
+        ProgramMode::RemoveFile(owner, name) => {
+            let mut command_data: Vec<String> = vec![];
+            command_data.push(String::from("remove"));
+            command_data.push(owner);
+            command_data.push(name);
+        },
+        
         ProgramMode::Help => {
             help(args);
             exit(0);
-        }
+        },
+
         ProgramMode::Invalid => {
             warn("Error: Parsing arguments failed.");
             help(args);
             exit(1);
-        }
+        },
     }
 }
 
+fn parse_arguments(
+    args: &[String],
+) -> (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+) {
+    let command = args.get(1).cloned();
+    let owner = args.get(2).cloned();
+    let name = args.get(3).cloned();
+    let path = args.get(4).cloned();
+
+    (command, owner, name, path)
+}
+
+fn set_file_ownership(path: &PathBuf, uid: Uid, gid: Gid) {
+    chown(path, Some(uid), Some(gid)).expect("Failed to set file ownership");
+}
+
+fn create_message(data: Vec<String>) -> String {
+    let command_string: String = data.join("-");
+    let hexed_command: String = hex::encode(command_string);
+    hexed_command
+}
+
 fn send_command(command: String) -> Result<String, RecsRecivedErrors> {
-    let socket_path = "/var/run/dusa/dusa.sock";
+    let socket_path = Path::new("/var/run/dusa/dusa.sock");
+
+    // Connect to the Unix domain socket
     let mut stream = match UnixStream::connect(socket_path) {
-        Ok(d) => d,
-        Err(e) => return Err(RecsRecivedErrors::RecsError(RecsError::new_details(
-            RecsErrorType::Error,
-            &format!("socket err: {}", e.to_string()),
-        ))),
+        Ok(stream) => stream,
+        Err(e) => {
+            return Err(RecsRecivedErrors::RecsError(RecsError::new_details(
+                RecsErrorType::Error,
+                &format!("Socket connection error: {}", e),
+            )))
+        }
     };
 
+    // Write the command to the server
     match stream.write_all(command.as_bytes()) {
         Ok(_) => (),
-        Err(e) => return Err(RecsRecivedErrors::RecsError(RecsError::new_details(
-            RecsErrorType::Error,
-            &format!("socket err: {}", e.to_string()),
-        ))),
+        Err(e) => {
+            return Err(RecsRecivedErrors::RecsError(RecsError::new_details(
+                RecsErrorType::Error,
+                &format!("Error writing to socket: {}", e),
+            )))
+        }
     };
 
-    let mut buffer = Vec::new();
-    match stream.read_to_end(&mut buffer){
-        Ok(d) => d,
-        Err(e) => return Err(RecsRecivedErrors::RecsError(RecsError::new_details(
-            RecsErrorType::Error,
-            &e.to_string(),
-        ))),
+      // Flush the stream to ensure all data is sent
+      match stream.flush() {
+        Ok(_) => (),
+        Err(e) => {
+            warn("Data was fucked");
+            return Err(RecsRecivedErrors::RecsError(RecsError::new_details(
+                RecsErrorType::Error,
+                &format!("Error flushing socket: {}", e),
+            )))
+        }
     };
 
-    Ok(String::from_utf8_lossy(&buffer).to_string())
+    // Read the response from the server
+    let mut buffer = vec![0; 8960];
+    match stream.read_to_end(&mut buffer) {
+        Ok(_) => {
+            print!("{:?}", &buffer);
+            // Convert the received data into a string
+            let response = String::from_utf8_lossy(&buffer).to_string();
+            notice(&response);
+            Ok(response)
+        }
+        Err(e) => {
+            print!("{:?}", &buffer);
+            warn("Data was fucked");
+            Err(RecsRecivedErrors::RecsError(RecsError::new_details(
+                RecsErrorType::Error,
+                &format!("Error reading from socket: {}", e),
+            )))
+        }
+    }
 }
 
 fn help(args: Vec<String>) {
@@ -136,6 +260,6 @@ fn help(args: Vec<String>) {
     );
     output(
         "GREEN",
-        "Commands: insert | retrieve | remove | ping | text ",
+        "Commands: encrypt-file | decrypt-file | encrypt-text | decrypt-text | remove-file | list-file | status ",
     );
 }

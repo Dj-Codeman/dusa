@@ -1,43 +1,37 @@
+#[path = "../shared/shared.rs"]
+mod shared;
 mod errors;
-use users::{UsersCache, Users, Groups};
+use shared::{convert_to_string, get_id};
 use nix::unistd::{chown, setgid, setuid, Gid, Uid};
-use nix::NixPath;
 use pretty::{notice, output};
 use recs::errors::RecsRecivedErrors;
 use recs::{decrypt_raw, encrypt_raw, initialize, insert, ping, remove, retrive, update_map};
-use std::fs::canonicalize;
+use std::fs::create_dir;
 use std::io::{Read, Write};
+use std::net::Shutdown;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::{fs, thread};
-use system::del_file;
+use system::{del_file, is_path};
 
 fn main() {
     // Make sure we are running as the dusa user
-	let user_cache: UsersCache = UsersCache::new();
-	let dusa_uid = user_cache.get_user_by_name("dusa").unwrap();
-	let dusa_gid = user_cache.get_group_by_name("dusa").unwrap();
-	
-    let uid = Uid::from_raw(dusa_uid.uid());
-    let gid = Gid::from_raw(dusa_gid.gid());
+    let (uid, gid) = get_id();
 
-    setuid(uid.into());
-    setgid(gid.into());
+    let _ = setuid(uid.into());
+    let _ = setgid(gid.into());
 
-
-    // if unsafe { libc::geteuid() } != 101 {
-    //     if unsafe { libc::setuid(101) } != 0 {
-    //         output("RED", &format!("Failed to set UID"));
-    //     } else {
-    //         notice("Now running as dusa");
-    //     }
-    // }    
 
     // Initializing the recs lib properly
     recs::set_debug(true);
     recs::set_prog("dusa");
 
     // Defining where the socket file is 
+    let _ = match is_path("/var/run/dusa") {
+        true => (), // nothing no folder is needed
+        false => create_dir("/var/run/dusa").unwrap(),
+    };
+
     let socket_path: &str = "/var/run/dusa/dusa.sock";
 
     // Setting up the new socket file
@@ -66,17 +60,45 @@ fn main() {
 }
 
 fn handle_client(mut stream: UnixStream) {
-    let mut buffer: [u8; 1024] = [0; 1024];
-    while let Ok(size) = stream.read(&mut buffer) {
-        if size == 0 {
-            break; // Connection closed
+    // Create a buffer to hold incoming data
+    let mut buffer = vec![0; 8960];
+
+    // Read data from the client in a loop
+    loop {
+        match stream.read(&mut buffer) {
+            Ok(size) => {
+                if size == 0 {
+                    // Connection closed
+                    break;
+                }
+
+                // Convert the received data into a string
+                let command_str = convert_to_string(&buffer[..size]);
+                notice(&command_str);
+                
+                if size == buffer.len() {
+                    buffer.resize(buffer.len() * 2, 0);
+                }
+
+                let response = hex::encode(process_command(command_str));
+
+                // Write the response back to the client
+                if let Err(e) = stream.write_all(response.as_bytes()) {
+                    eprintln!("Error writing to client: {}", e);
+                    break;
+                } else {
+                    notice(&response);
+                }
+            }
+            Err(e) => {
+                eprintln!("Error reading from client: {}", e);
+                break;
+            }
         }
-
-        let command_str = String::from_utf8_lossy(&buffer[..size]).to_string();
-        let response = process_command(command_str);
-
-        stream.write_all(&response.into_bytes()).unwrap();
     }
+
+    // Shutdown the connection gracefully
+    let _ = stream.shutdown(Shutdown::Both);
 }
 
 fn process_command(command_str: String) -> String {
@@ -87,7 +109,8 @@ fn process_command(command_str: String) -> String {
             RecsRecivedErrors::display(e, true),
     }
 
-    let parts: Vec<&str> = command_str.split_whitespace().collect();
+    // let parts: Vec<&str> = command_str.split_whitespace().collect();
+    let parts: Vec<&str> = command_str.split('-').collect();
 
     match parts.get(0) {
         Some(&"insert") => {
