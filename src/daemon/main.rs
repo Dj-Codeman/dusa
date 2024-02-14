@@ -3,7 +3,7 @@ mod shared;
 mod errors;
 use shared::{convert_to_string, get_id};
 use nix::unistd::{chown, setgid, setuid, Gid, Uid};
-use pretty::{notice, output};
+use pretty::{notice, output, warn};
 use recs::errors::RecsRecivedErrors;
 use recs::{decrypt_raw, encrypt_raw, initialize, insert, ping, remove, retrive, update_map};
 use std::fs::create_dir;
@@ -83,11 +83,12 @@ fn handle_client(mut stream: UnixStream) {
                 let response = hex::encode(process_command(command_str));
 
                 // Write the response back to the client
-                if let Err(e) = stream.write_all(response.as_bytes()) {
+                if let Err(e) = stream.write(response.as_bytes()) {
                     eprintln!("Error writing to client: {}", e);
                     break;
                 } else {
                     notice(&response);
+                    break;
                 }
             }
             Err(e) => {
@@ -98,6 +99,7 @@ fn handle_client(mut stream: UnixStream) {
     }
 
     // Shutdown the connection gracefully
+    warn("Closing connection");
     let _ = stream.shutdown(Shutdown::Both);
 }
 

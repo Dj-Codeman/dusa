@@ -1,10 +1,10 @@
 #[path = "../shared/shared.rs"]
 mod shared;
 use crate::shared::get_id;
-use std::path::{Path, PathBuf};
 use nix::unistd::{chown, Gid, Uid};
 use pretty::*;
 use recs::errors::{RecsError, RecsErrorType, RecsRecivedErrors};
+use std::path::{Path, PathBuf};
 // use shared::convert_to_string;
 // use std::env;
 use std::fs::canonicalize;
@@ -83,7 +83,7 @@ fn main() {
             };
 
             // Changing owner ship of the file
-            let (uid, gid) =  get_id();
+            let (uid, gid) = get_id();
             set_file_ownership(&absolute_path, uid, gid);
 
             // Pusing commands to the array
@@ -98,10 +98,10 @@ fn main() {
 
             // Sending the message
             match send_command(message) {
-                Ok(d) => notice(&d),
+                Ok(d) => pass(&d),
                 Err(e) => recs::errors::RecsRecivedErrors::display(e, false),
             }
-        },
+        }
 
         ProgramMode::RetrieveFile(owner, name) => {
             let mut command_data: Vec<String> = vec![];
@@ -112,10 +112,10 @@ fn main() {
             let message: String = create_message(command_data);
 
             match send_command(message) {
-                Ok(d) => notice(&d),
+                Ok(d) => pass(&d),
                 Err(e) => recs::errors::RecsRecivedErrors::display(e, false),
             }
-        },
+        }
 
         ProgramMode::EncryptText(data) => {
             let mut command_data: Vec<String> = vec![];
@@ -126,10 +126,10 @@ fn main() {
             notice(&message);
 
             match send_command(message) {
-                Ok(d) => notice(&d),
+                Ok(d) => pass(&d),
                 Err(e) => recs::errors::RecsRecivedErrors::display(e, false),
             }
-        },
+        }
 
         ProgramMode::DecryptText(data, key, chunk) => {
             let mut command_data: Vec<String> = vec![];
@@ -141,28 +141,28 @@ fn main() {
             let message: String = create_message(command_data);
 
             match send_command(message) {
-                Ok(d) => notice(&d),
+                Ok(d) => pass(&d),
                 Err(e) => recs::errors::RecsRecivedErrors::display(e, false),
             }
-        },
+        }
 
         ProgramMode::RemoveFile(owner, name) => {
             let mut command_data: Vec<String> = vec![];
             command_data.push(String::from("remove"));
             command_data.push(owner);
             command_data.push(name);
-        },
-        
+        }
+
         ProgramMode::Help => {
             help(args);
             exit(0);
-        },
+        }
 
         ProgramMode::Invalid => {
             warn("Error: Parsing arguments failed.");
             help(args);
             exit(1);
-        },
+        }
     }
 }
 
@@ -207,7 +207,7 @@ fn send_command(command: String) -> Result<String, RecsRecivedErrors> {
     };
 
     // Write the command to the server
-    match stream.write_all(command.as_bytes()) {
+    match stream.write(command.as_bytes()) {
         Ok(_) => (),
         Err(e) => {
             return Err(RecsRecivedErrors::RecsError(RecsError::new_details(
@@ -217,30 +217,27 @@ fn send_command(command: String) -> Result<String, RecsRecivedErrors> {
         }
     };
 
-      // Flush the stream to ensure all data is sent
-      match stream.flush() {
+    // Flush the stream to ensure all data is sent
+    match stream.flush() {
         Ok(_) => (),
         Err(e) => {
             warn("Data was fucked");
             return Err(RecsRecivedErrors::RecsError(RecsError::new_details(
                 RecsErrorType::Error,
                 &format!("Error flushing socket: {}", e),
-            )))
+            )));
         }
     };
 
     // Read the response from the server
-    let mut buffer = vec![0; 8960];
+    let mut buffer = vec![0; 1024];
     match stream.read_to_end(&mut buffer) {
         Ok(_) => {
-            print!("{:?}", &buffer);
             // Convert the received data into a string
             let response = String::from_utf8_lossy(&buffer).to_string();
-            notice(&response);
             Ok(response)
         }
         Err(e) => {
-            print!("{:?}", &buffer);
             warn("Data was fucked");
             Err(RecsRecivedErrors::RecsError(RecsError::new_details(
                 RecsErrorType::Error,
