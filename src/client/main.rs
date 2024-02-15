@@ -1,6 +1,7 @@
 #[path = "../shared/shared.rs"]
 mod shared;
 use crate::shared::get_id;
+use libc::geteuid;
 use nix::unistd::{chown, Gid, Uid};
 use pretty::*;
 use recs::errors::{RecsError, RecsErrorType, RecsRecivedErrors};
@@ -26,7 +27,7 @@ fn main() {
         StoreFile(String, String, String),
         RetrieveFile(String, String),
         EncryptText(String),
-        DecryptText(String, String, String),
+        DecryptText(String),
         RemoveFile(String, String),
         // Manage(String, String, String), //
         // Text(String),
@@ -51,7 +52,7 @@ fn main() {
             },
             "decrypt-text" => match (arg_1, arg_2, arg_3) {
                 // data key chunk
-                (Some(data), Some(key), Some(chunk)) => ProgramMode::DecryptText(data, key, chunk),
+                (Some(data), Some(key), Some(chunk)) => ProgramMode::DecryptText(data),
                 _ => ProgramMode::Invalid,
             },
             "remove-file" => match (arg_1, arg_2) {
@@ -131,12 +132,10 @@ fn main() {
             }
         }
 
-        ProgramMode::DecryptText(data, key, chunk) => {
+        ProgramMode::DecryptText(data) => {
             let mut command_data: Vec<String> = vec![];
             command_data.push(String::from("decrypt"));
             command_data.push(data);
-            command_data.push(key);
-            command_data.push(chunk);
 
             let message: String = create_message(command_data);
 
@@ -151,6 +150,13 @@ fn main() {
             command_data.push(String::from("remove"));
             command_data.push(owner);
             command_data.push(name);
+
+            let message: String = create_message(command_data);
+
+            match send_command(message) {
+                Ok(d) => pass(&d),
+                Err(e) => recs::errors::RecsRecivedErrors::display(e, false),
+            }
         }
 
         ProgramMode::Help => {
@@ -186,14 +192,18 @@ fn set_file_ownership(path: &PathBuf, uid: Uid, gid: Gid) {
     chown(path, Some(uid), Some(gid)).expect("Failed to set file ownership");
 }
 
-fn create_message(data: Vec<String>) -> String {
+fn create_message(mut data: Vec<String>) -> String {
+    // for certain functions the clients uid has to be sent too
+    let current_uid: u32 = unsafe { geteuid() }; 
+    data.push(format!("{}", current_uid));
+
     let command_string: String = data.join("-");
     let hexed_command: String = hex::encode(command_string);
     hexed_command
 }
 
 fn send_command(command: String) -> Result<String, RecsRecivedErrors> {
-    let socket_path = Path::new("/var/run/dusa/dusa.sock");
+    let socket_path: &Path = Path::new("/var/run/dusa/dusa.sock");
 
     // Connect to the Unix domain socket
     let mut stream = match UnixStream::connect(socket_path) {

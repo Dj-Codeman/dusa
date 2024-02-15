@@ -15,3 +15,11 @@ pub fn convert_to_string(bytes: &[u8]) -> String {
     let string = String::from_utf8(decoded_bytes).unwrap();
     string
 }
+
+pub fn okay_val() -> String {
+    hex::encode(String::from("Operation Performed successfully"))
+}
+
+pub fn nokay_val() -> String {
+    hex::encode(String::from("Invalid Command"))
+}

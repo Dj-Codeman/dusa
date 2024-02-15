@@ -223,7 +223,7 @@ dependencies = [
  "hex",
  "libc 0.2.153",
  "logging",
- "nix",
+ "nix 0.20.2",
  "pretty",
  "recs",
  "system",
@@ -414,6 +414,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "nix"
+version = "0.23.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f3790c00a0150112de0f4cd161e3d7fc4b2d8a5542ffc35f099a2562aecb35c"
+dependencies = [
+ "bitflags 1.2.1",
+ "cc",
+ "cfg-if",
+ "libc 0.2.153",
+ "memoffset",
+]
+
+[[package]]
 name = "ntapi"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -530,8 +543,8 @@ dependencies = [
 
 [[package]]
 name = "recs"
-version = "1.0.1"
-source = "git+https://github.com/Dj-Codeman/recs.git#d8bda18a261cdf624630f418d8c4f081295f76ec"
+version = "1.1.0"
+source = "git+https://github.com/Dj-Codeman/recs.git#1232991b7aa4ddaa35dbcbe2fa7b5ff926698d60"
 dependencies = [
  "aes",
  "base64",
@@ -540,6 +553,7 @@ dependencies = [
  "hmac",
  "lazy_static",
  "logging",
+ "nix 0.23.2",
  "once_cell",
  "pretty",
  "rand",

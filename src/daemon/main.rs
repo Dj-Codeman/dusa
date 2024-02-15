@@ -1,11 +1,12 @@
+mod errors;
 #[path = "../shared/shared.rs"]
 mod shared;
-mod errors;
-use shared::{convert_to_string, get_id};
-use nix::unistd::{chown, setgid, setuid, Gid, Uid};
-use pretty::{notice, output, warn};
+use logging::append_log;
+use nix::unistd::{setgid, setuid};
+use pretty::{notice, warn};
 use recs::errors::RecsRecivedErrors;
 use recs::{decrypt_raw, encrypt_raw, initialize, insert, ping, remove, retrive, update_map};
+use shared::{convert_to_string, get_id, nokay_val, okay_val};
 use std::fs::create_dir;
 use std::io::{Read, Write};
 use std::net::Shutdown;
@@ -21,12 +22,11 @@ fn main() {
     let _ = setuid(uid.into());
     let _ = setgid(gid.into());
 
-
     // Initializing the recs lib properly
     recs::set_debug(true);
     recs::set_prog("dusa");
 
-    // Defining where the socket file is 
+    // Defining where the socket file is
     let _ = match is_path("/var/run/dusa") {
         true => (), // nothing no folder is needed
         false => create_dir("/var/run/dusa").unwrap(),
@@ -44,7 +44,7 @@ fn main() {
     // Changing the permissions the socket
     let socket_metadata = fs::metadata(socket_path).unwrap();
     let mut permissions = socket_metadata.permissions();
-    permissions.set_mode(0o770);  // Set desired permissions
+    permissions.set_mode(0o770); // Set desired permissions
     fs::set_permissions(socket_path, permissions).unwrap();
 
     for stream in listener.incoming() {
@@ -52,11 +52,10 @@ fn main() {
             Ok(stream) => {
                 // Spawn a new thread or use async/await to handle each incoming connection
                 thread::spawn(|| handle_client(stream));
-            },
+            }
             Err(e) => eprintln!("Error accepting connection: {}", e),
         }
     }
-    
 }
 
 fn handle_client(mut stream: UnixStream) {
@@ -75,7 +74,7 @@ fn handle_client(mut stream: UnixStream) {
                 // Convert the received data into a string
                 let command_str = convert_to_string(&buffer[..size]);
                 notice(&command_str);
-                
+
                 if size == buffer.len() {
                     buffer.resize(buffer.len() * 2, 0);
                 }
@@ -107,54 +106,78 @@ fn process_command(command_str: String) -> String {
     // Ensure data is initialized before processing command
     match initialize() {
         Ok(_) => (),
-        Err(e) => 
-            RecsRecivedErrors::display(e, true),
+        Err(e) => RecsRecivedErrors::display(e, true),
     }
+
+    let progname = "dusa_server";
 
     // let parts: Vec<&str> = command_str.split_whitespace().collect();
     let parts: Vec<&str> = command_str.split('-').collect();
 
     match parts.get(0) {
         Some(&"insert") => {
-            let filename = parts.get(1).unwrap_or(&"").to_string();
-            let owner = parts.get(2).unwrap_or(&"").to_string();
-            let name = parts.get(3).unwrap_or(&"").to_string();
-            // Taking ownership of the file 
-            match insert(filename, owner, name) {
-                Ok(_) => "Inserted Successfully".to_string(),
+            let owner: String = parts.get(1).unwrap_or(&"").to_string();
+            let name: String = parts.get(2).unwrap_or(&"").to_string();
+            let path: String = parts.get(3).unwrap_or(&"").to_string();
+            // Taking ownership of the file
+            match insert(path, owner, name) {
+                Ok(_) => okay_val(),
+
                 Err(e) => {
-                RecsRecivedErrors::display(e, false);
-                panic!(); },
+                    append_log(progname, &format!("{:?}", e));
+                    nokay_val()
+                }
             }
         }
         Some(&"retrieve") => {
             let owner = parts.get(1).unwrap_or(&"").to_string();
             let name = parts.get(2).unwrap_or(&"").to_string();
-            match retrive(owner, name) {
-                Ok(_) => "Retrieved Successfully".to_string(),
-                Err(e) => panic!("{:?}", RecsRecivedErrors::display(e, false)),
+            let uid: u32 = match parts.get(3).unwrap_or(&"").parse::<u32>() {
+                Ok(uid) => uid,
+                Err(e) => panic!("{}", &e.to_string()),
+            };
+            match retrive(owner, name, uid) {
+                Ok((file_path, file_home)) => {
+                    notice(&file_path);
+                    notice(&file_home);
+                    okay_val()
+                }
+
+                Err(e) => {
+                    append_log(progname, &format!("{:?}", e));
+                    nokay_val()
+                }
             }
         }
         Some(&"remove") => {
             let owner = parts.get(1).unwrap_or(&"").to_string();
             let name = parts.get(2).unwrap_or(&"").to_string();
             match remove(owner, name) {
-                Ok(_) => "Removed Successfully".to_string(),
-                Err(e) => panic!("{:?}", RecsRecivedErrors::display(e, false)),
+                Ok(_) => okay_val(),
+                Err(e) => {
+                    append_log(progname, &format!("{:?}", e));
+                    nokay_val()
+                }
             }
         }
         Some(&"ping") => {
             let owner = parts.get(1).unwrap_or(&"").to_string();
             let name = parts.get(2).unwrap_or(&"").to_string();
-            ping(owner, name).to_string()
+            match ping(owner, name) {
+                true => okay_val(),
+                false => nokay_val(),
+            }
         }
         Some(&"encrypt") => {
             let data = parts.get(1).unwrap_or(&"").to_string();
             match encrypt_raw(data) {
                 Ok((key, cipher, chunks)) => {
                     format!("Key: {}, Cipher: {}, Chunks: {}", key, cipher, chunks)
+                },
+                Err(e) => {
+                    append_log(progname, &format!("{:?}", e));
+                    nokay_val()
                 }
-                Err(e) => panic!("{:?}", RecsRecivedErrors::display(e, false)),
             }
         }
         Some(&"decrypt") => {
@@ -163,17 +186,20 @@ fn process_command(command_str: String) -> String {
             let recs_chunks = parts.get(3).unwrap_or(&"0").parse::<usize>().unwrap_or(0);
             match decrypt_raw(recs_data, recs_key, recs_chunks) {
                 Ok(data) => format!("Decrypted Data: {:?}", data),
-                Err(e) => panic!("{:?}", RecsRecivedErrors::display(e, false)),
+                Err(e) => {
+                    append_log(progname, &format!("{:?}", e));
+                    nokay_val()
+                }
             }
         }
         Some(&"update_map") => {
             let map_num = parts.get(1).unwrap_or(&"0").parse::<u32>().unwrap_or(0);
             if update_map(map_num) {
-                "Map Updated Successfully".to_string()
+                okay_val()
             } else {
-                "Failed to Update Map".to_string()
+                nokay_val()
             }
         }
-        _ => "Invalid Command".to_string(),
+        _ => nokay_val(),
     }
 }
