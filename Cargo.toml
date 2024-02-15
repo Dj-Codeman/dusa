@@ -11,7 +11,7 @@ authors = ["Darrion <dwhitfield@ramfield.net>"]
 nix = "0.20"
 users = "0.9.0"
 hex = "0.4.3"
-recs = { git = "https://github.com/Dj-Codeman/recs.git" }
+recs = { git = "https://github.com/Dj-Codeman/recs.git", tag = "v1.1.0" }
 logging = { git = "https://github.com/Dj-Codeman/logger.git" }
 system = { git = "https://github.com/Dj-Codeman/system.git" }
 pretty = { git = "https://github.com/Dj-Codeman/pretty.git" }
