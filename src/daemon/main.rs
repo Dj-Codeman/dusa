@@ -1,9 +1,8 @@
 mod errors;
 #[path = "../shared/shared.rs"]
 mod shared;
-use logging::append_log;
 use nix::unistd::{setgid, setuid};
-use pretty::{notice, warn};
+use pretty::{halt, notice, output, warn};
 use recs::errors::RecsRecivedErrors;
 use recs::{decrypt_raw, encrypt_raw, initialize, insert, ping, remove, retrive, update_map};
 use shared::{convert_to_string, get_id, nokay_val, okay_val};
@@ -13,14 +12,16 @@ use std::net::Shutdown;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::{fs, thread};
-use system::{del_file, is_path};
+use system::{create_hash, del_file, is_path, truncate};
 
 fn main() {
     // Make sure we are running as the dusa user
     let (uid, gid) = get_id();
 
-    let _ = setuid(uid.into());
-    let _ = setgid(gid.into());
+    match (setuid(uid.into()), setgid(gid.into())) {
+        (Ok(_), Ok(_)) => (),
+        _ => halt("We aren't running as the correct user, peacing out .."),
+    };
 
     // Initializing the recs lib properly
     recs::set_debug(true);
@@ -35,17 +36,39 @@ fn main() {
     let socket_path: &str = "/var/run/dusa/dusa.sock";
 
     // Setting up the new socket file
-    let _ = del_file(socket_path);
+    let _ = del_file(socket_path); // ignore incase there wasn't a socket previously, ie clean install, crashes
     let listener: UnixListener = match UnixListener::bind(socket_path) {
         Ok(d) => d,
-        Err(e) => panic!("Socket binding error: {}", e),
+        Err(e) => {
+            halt(&format!(
+                "We couldn't create the socket because this happened: {}",
+                &e.to_string()
+            ));
+            panic!()
+        }
     };
 
     // Changing the permissions the socket
-    let socket_metadata = fs::metadata(socket_path).unwrap();
+    let socket_metadata = match fs::metadata(socket_path) {
+        Ok(d) => d,
+        Err(e) => {
+            halt(&format!(
+                "Couldn't read meta data of the socket: {}",
+                &e.to_string()
+            ));
+            panic!()
+        }
+    };
     let mut permissions = socket_metadata.permissions();
-    permissions.set_mode(0o770); // Set desired permissions
-    fs::set_permissions(socket_path, permissions).unwrap();
+    permissions.set_mode(0o660); // Set desired permissions
+
+    match fs::set_permissions(socket_path, permissions) {
+        Ok(()) => (),
+        Err(e) => halt(&format!(
+            "We own the socket but we can't change its permissions, all i know is '{}'",
+            &e.to_string()
+        )),
+    };
 
     for stream in listener.incoming() {
         match stream {
@@ -53,14 +76,14 @@ fn main() {
                 // Spawn a new thread or use async/await to handle each incoming connection
                 thread::spawn(|| handle_client(stream));
             }
-            Err(e) => eprintln!("Error accepting connection: {}", e),
+            Err(e) => halt(&format!("Error accepting connection: {}", e)),
         }
     }
 }
 
 fn handle_client(mut stream: UnixStream) {
     // Create a buffer to hold incoming data
-    let mut buffer = vec![0; 8960];
+    let mut buffer = vec![0; 512];
 
     // Read data from the client in a loop
     loop {
@@ -72,22 +95,26 @@ fn handle_client(mut stream: UnixStream) {
                 }
 
                 // Convert the received data into a string
-                let command_str = convert_to_string(&buffer[..size]);
-                notice(&command_str);
+                let command_str: String = valdate_command(&buffer[..size]);
+                notice("Command recived, processing");
+                output("YELLOW", &format!("Recived command : {}", &command_str));
 
                 if size == buffer.len() {
-                    buffer.resize(buffer.len() * 2, 0);
+                    buffer.resize(buffer.len() * 4, 0);
                 }
 
-                let response = hex::encode(process_command(command_str));
+                let response = process_command(command_str);
 
                 // Write the response back to the client
-                if let Err(e) = stream.write(response.as_bytes()) {
-                    eprintln!("Error writing to client: {}", e);
-                    break;
-                } else {
-                    notice(&response);
-                    break;
+                match stream.write(response.as_bytes()) {
+                    Ok(_) => {
+                        notice("Response Sent");
+                        break;
+                    }
+                    Err(e) => {
+                        halt(&format!("Error writing to client: {}", e));
+                        break;
+                    }
                 }
             }
             Err(e) => {
@@ -98,8 +125,27 @@ fn handle_client(mut stream: UnixStream) {
     }
 
     // Shutdown the connection gracefully
-    warn("Closing connection");
-    let _ = stream.shutdown(Shutdown::Both);
+    match stream.shutdown(Shutdown::Both) {
+        Ok(_) => output("GREEN", "Finished, closing connection"),
+        Err(e) => halt(&e.to_string()),
+    }
+}
+
+fn valdate_command(buffer: &[u8]) -> String {
+    let unsafe_string: String = unsafe { String::from_utf8_unchecked(buffer.to_vec()) };
+    let unsafe_array: Vec<&str> = unsafe_string.split("Z").collect();
+    let unvalidated_command: String = unsafe_array[0].to_owned();
+    let unvalidated_hash: String = unsafe_array[1].to_owned();
+    let valid_hash: String =
+        hex::encode(truncate(&create_hash(unvalidated_command.clone())[7..], 50));
+    match unvalidated_hash == valid_hash {
+        // TODO add some permission checks on what was requested
+        true => convert_to_string(unvalidated_command.as_bytes()),
+        false => {
+            halt("YOUR COMMANDS AIN'T GOOD ROUND HERE SON");
+            String::from("GIVE ME ALL THE DATA, sike ass dude")
+        }
+    }
 }
 
 fn process_command(command_str: String) -> String {
@@ -108,8 +154,6 @@ fn process_command(command_str: String) -> String {
         Ok(_) => (),
         Err(e) => RecsRecivedErrors::display(e, true),
     }
-
-    let progname = "dusa_server";
 
     // let parts: Vec<&str> = command_str.split_whitespace().collect();
     let parts: Vec<&str> = command_str.split('-').collect();
@@ -121,10 +165,9 @@ fn process_command(command_str: String) -> String {
             let path: String = parts.get(3).unwrap_or(&"").to_string();
             // Taking ownership of the file
             match insert(path, owner, name) {
-                Ok(_) => okay_val(),
-
+                Ok(_) => okay_val(None),
                 Err(e) => {
-                    append_log(progname, &format!("{:?}", e));
+                    warn(&format!("{:?}", e));
                     nokay_val()
                 }
             }
@@ -138,13 +181,14 @@ fn process_command(command_str: String) -> String {
             };
             match retrive(owner, name, uid) {
                 Ok((file_path, file_home)) => {
-                    notice(&file_path);
-                    notice(&file_home);
-                    okay_val()
+                    let mut response: Vec<String> = vec![];
+                    response.push(file_path);
+                    response.push(file_home);
+                    okay_val(Some(response))
                 }
 
                 Err(e) => {
-                    append_log(progname, &format!("{:?}", e));
+                    warn(&format!("{:?}", e));
                     nokay_val()
                 }
             }
@@ -153,9 +197,9 @@ fn process_command(command_str: String) -> String {
             let owner = parts.get(1).unwrap_or(&"").to_string();
             let name = parts.get(2).unwrap_or(&"").to_string();
             match remove(owner, name) {
-                Ok(_) => okay_val(),
+                Ok(_) => okay_val(None),
                 Err(e) => {
-                    append_log(progname, &format!("{:?}", e));
+                    warn(&format!("{:?}", e));
                     nokay_val()
                 }
             }
@@ -164,7 +208,7 @@ fn process_command(command_str: String) -> String {
             let owner = parts.get(1).unwrap_or(&"").to_string();
             let name = parts.get(2).unwrap_or(&"").to_string();
             match ping(owner, name) {
-                true => okay_val(),
+                true => okay_val(None),
                 false => nokay_val(),
             }
         }
@@ -172,10 +216,14 @@ fn process_command(command_str: String) -> String {
             let data = parts.get(1).unwrap_or(&"").to_string();
             match encrypt_raw(data) {
                 Ok((key, cipher, chunks)) => {
-                    format!("Key: {}, Cipher: {}, Chunks: {}", key, cipher, chunks)
-                },
+                    let mut response: Vec<String> = vec![];
+                    response.push(key);
+                    response.push(cipher);
+                    response.push(format!("{}", chunks));
+                    okay_val(Some(response))
+                }
                 Err(e) => {
-                    append_log(progname, &format!("{:?}", e));
+                    warn(&format!("{:?}", e));
                     nokay_val()
                 }
             }
@@ -185,9 +233,9 @@ fn process_command(command_str: String) -> String {
             let recs_key = parts.get(2).unwrap_or(&"").to_string();
             let recs_chunks = parts.get(3).unwrap_or(&"0").parse::<usize>().unwrap_or(0);
             match decrypt_raw(recs_data, recs_key, recs_chunks) {
-                Ok(data) => format!("Decrypted Data: {:?}", data),
+                Ok(data) => okay_val(Some(vec![convert_to_string(&data)])),
                 Err(e) => {
-                    append_log(progname, &format!("{:?}", e));
+                    warn(&format!("{:?}", e));
                     nokay_val()
                 }
             }
@@ -195,7 +243,7 @@ fn process_command(command_str: String) -> String {
         Some(&"update_map") => {
             let map_num = parts.get(1).unwrap_or(&"0").parse::<u32>().unwrap_or(0);
             if update_map(map_num) {
-                okay_val()
+                okay_val(None)
             } else {
                 nokay_val()
             }

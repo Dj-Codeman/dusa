@@ -1,18 +1,16 @@
 #[path = "../shared/shared.rs"]
 mod shared;
-use crate::shared::get_id;
+use shared::get_id;
 use libc::geteuid;
 use nix::unistd::{chown, Gid, Uid};
 use pretty::*;
 use recs::errors::{RecsError, RecsErrorType, RecsRecivedErrors};
 use std::path::{Path, PathBuf};
-// use shared::convert_to_string;
-// use std::env;
 use std::fs::canonicalize;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::process::exit;
-use system::is_path;
+use system::{create_hash, is_path, truncate};
 // use users::{Groups, Users, UsersCache};
 
 fn main() {
@@ -29,8 +27,7 @@ fn main() {
         EncryptText(String),
         DecryptText(String),
         RemoveFile(String, String),
-        // Manage(String, String, String), //
-        // Text(String),
+
         Help,
         Invalid,
     }
@@ -50,9 +47,9 @@ fn main() {
                 Some(data) => ProgramMode::EncryptText(data),
                 None => ProgramMode::Invalid,
             },
-            "decrypt-text" => match (arg_1, arg_2, arg_3) {
+            "decrypt-text" => match arg_1 {
                 // data key chunk
-                (Some(data), Some(key), Some(chunk)) => ProgramMode::DecryptText(data),
+                Some(data) => ProgramMode::DecryptText(data),
                 _ => ProgramMode::Invalid,
             },
             "remove-file" => match (arg_1, arg_2) {
@@ -199,7 +196,15 @@ fn create_message(mut data: Vec<String>) -> String {
 
     let command_string: String = data.join("-");
     let hexed_command: String = hex::encode(command_string);
-    hexed_command
+    let hexed_hash: String = hex::encode(truncate(&create_hash(hexed_command.clone())[7..], 50));
+
+    let mut secure_command_array: Vec<String> = vec![];
+
+    secure_command_array.push(hexed_command);
+    secure_command_array.push(hexed_hash);
+    
+    let secure_command: String = secure_command_array.join("Z");
+    secure_command
 }
 
 fn send_command(command: String) -> Result<String, RecsRecivedErrors> {
@@ -240,7 +245,7 @@ fn send_command(command: String) -> Result<String, RecsRecivedErrors> {
     };
 
     // Read the response from the server
-    let mut buffer = vec![0; 1024];
+    let mut buffer = vec![0; 2048];
     match stream.read_to_end(&mut buffer) {
         Ok(_) => {
             // Convert the received data into a string
