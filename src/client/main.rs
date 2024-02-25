@@ -109,8 +109,14 @@ fn main() {
 
             let message: String = create_message(command_data);
 
+            use crate::shared::convert_to_string;
             match send_command(message) {
-                Ok(d) => pass(&d),
+                Ok(d) => {
+                    let bytes = d.replace("\0", "");
+                    let bytes_string = convert_to_string(bytes.as_bytes());
+                    let paths: Vec<&str> = bytes_string.split('-').collect();
+                    pass(&paths[0])
+                }
                 Err(e) => recs::errors::RecsRecivedErrors::display(e, false),
             }
         }
