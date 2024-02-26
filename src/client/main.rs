@@ -115,7 +115,14 @@ fn main() {
                     let bytes = d.replace("\0", "");
                     let bytes_string = convert_to_string(bytes.as_bytes());
                     let paths: Vec<&str> = bytes_string.split('-').collect();
-                    pass(&paths[0])
+                    use std::fs;
+                    let data = fs::read_to_string(&paths[0]);
+                    match data {
+                        Ok(d) => pass(&d),
+                        Err(_) => halt(&format!("The data is a binary located at, {}", &paths[0]))
+                    }
+                    //pass(&data);
+                    //pass(&paths[0])
                 }
                 Err(e) => recs::errors::RecsRecivedErrors::display(e, false),
             }

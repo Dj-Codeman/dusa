@@ -98,9 +98,9 @@ checksum = "8ea184aa71bb362a1157c896979544cc23974e08fd265f29ea96b59f0b4a555b"
 
 [[package]]
 name = "cc"
-version = "1.0.87"
+version = "1.0.88"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3286b845d0fccbdd15af433f61c5970e711987036cb468f437ff6badd70f4e24"
+checksum = "02f341c093d19155a6e41631ce5971aac4e9a868262212153124c15fa22d1cdc"
 
 [[package]]
 name = "cfg-if"
@@ -568,7 +568,7 @@ dependencies = [
 [[package]]
 name = "recs"
 version = "1.1.0"
-source = "git+https://github.com/Dj-Codeman/recs.git#ce46f5cc28ba8bcb7456c80fa627471f9d47d568"
+source = "git+https://github.com/Dj-Codeman/recs.git#93b90b9e6ce996b2277230713fcf226f3c3ee652"
 dependencies = [
  "aes",
  "base64",
