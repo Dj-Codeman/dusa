@@ -124,8 +124,6 @@ fn main() {
                         },
                         Err(_) => halt(&format!("The data is a binary located at, {}", &paths[0]))
                     }
-                    //pass(&data);
-                    //pass(&paths[0])
                 }
                 Err(e) => recs::errors::RecsRecivedErrors::display(e, false),
             }
