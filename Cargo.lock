@@ -568,7 +568,7 @@ dependencies = [
 [[package]]
 name = "recs"
 version = "1.1.0"
-source = "git+https://github.com/Dj-Codeman/recs.git#93b90b9e6ce996b2277230713fcf226f3c3ee652"
+source = "git+https://github.com/Dj-Codeman/recs.git#b65e8a715f94457c5d298d17439e8b34efbdcf7c"
 dependencies = [
  "aes",
  "base64",

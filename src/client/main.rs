@@ -118,7 +118,10 @@ fn main() {
                     use std::fs;
                     let data = fs::read_to_string(&paths[0]);
                     match data {
-                        Ok(d) => pass(&d),
+                        Ok(d) => {
+                            output("GREEN", &d);
+                            pass(&format!("Temporary path: {}", &paths[0]))
+                        },
                         Err(_) => halt(&format!("The data is a binary located at, {}", &paths[0]))
                     }
                     //pass(&data);
@@ -287,4 +290,8 @@ fn help(args: Vec<String>) {
         "GREEN",
         "Commands: encrypt-file | decrypt-file | encrypt-text | decrypt-text | remove-file | list-file | status ",
     );
+    output(
+        "BLUE",
+        "Version X.xx"
+    )
 }
