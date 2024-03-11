@@ -83,7 +83,7 @@ fn main() {
 
 fn handle_client(mut stream: UnixStream) {
     // Create a buffer to hold incoming data
-    let mut buffer = vec![0; 2048];
+    let mut buffer = vec![0; 40960];
 
     // Read data from the client in a loop
     loop {

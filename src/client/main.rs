@@ -259,7 +259,7 @@ fn send_command(command: String) -> Result<String, RecsRecivedErrors> {
     };
 
     // Read the response from the server
-    let mut buffer = vec![0; 4096];
+    let mut buffer = vec![0; 89200];
     match stream.read_to_end(&mut buffer) {
         Ok(_) => {
             // Convert the received data into a string
