@@ -83,7 +83,7 @@ fn main() {
 
 fn handle_client(mut stream: UnixStream) {
     // Create a buffer to hold incoming data
-    let mut buffer = vec![0; 512];
+    let mut buffer = vec![0; 2048];
 
     // Read data from the client in a loop
     loop {
@@ -156,7 +156,7 @@ fn process_command(command_str: String) -> String {
     }
 
     // let parts: Vec<&str> = command_str.split_whitespace().collect();
-    let parts: Vec<&str> = command_str.split('-').collect();
+    let parts: Vec<&str> = command_str.split('*').collect();
 
     match parts.get(0) {
         Some(&"insert") => {
@@ -229,11 +229,24 @@ fn process_command(command_str: String) -> String {
             }
         }
         Some(&"decrypt") => {
-            let recs_data = parts.get(1).unwrap_or(&"").to_string();
-            let recs_key = parts.get(2).unwrap_or(&"").to_string();
-            let recs_chunks = parts.get(3).unwrap_or(&"0").parse::<usize>().unwrap_or(0);
+            let hexed_data: String = parts.get(1).unwrap_or(&"").to_string();
+            let unhexed_data: String = match &hex::decode(hexed_data) {
+                Ok(d) => unsafe { String::from_utf8_unchecked(d.to_vec()) },
+                Err(e) => {
+                    warn(&format!("{:?}", e));
+                    panic!();
+                },
+            };
+
+            notice(&unhexed_data);
+
+            let parts_array: Vec<&str> = unhexed_data.split('=').collect(); //= is the delimiter for the command interchange
+            let recs_key = parts_array[0].to_owned();
+            let recs_data = parts_array[1].to_owned();
+            let recs_chunks = parts_array[2].parse::<usize>().unwrap_or(1);
+
             match decrypt_raw(recs_data, recs_key, recs_chunks) {
-                Ok(data) => okay_val(Some(vec![convert_to_string(&data)])),
+                Ok(data) => okay_val(Some(vec![String::from_utf8(data).unwrap()])),
                 Err(e) => {
                     warn(&format!("{:?}", e));
                     nokay_val()

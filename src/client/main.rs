@@ -208,7 +208,7 @@ fn create_message(mut data: Vec<String>) -> String {
     let current_uid: u32 = unsafe { geteuid() }; 
     data.push(format!("{}", current_uid));
 
-    let command_string: String = data.join("-");
+    let command_string: String = data.join("*");
     let hexed_command: String = hex::encode(command_string);
     let hexed_hash: String = hex::encode(truncate(&create_hash(hexed_command.clone())[7..], 50));
 
@@ -259,7 +259,7 @@ fn send_command(command: String) -> Result<String, RecsRecivedErrors> {
     };
 
     // Read the response from the server
-    let mut buffer = vec![0; 2048];
+    let mut buffer = vec![0; 4096];
     match stream.read_to_end(&mut buffer) {
         Ok(_) => {
             // Convert the received data into a string

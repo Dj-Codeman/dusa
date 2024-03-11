@@ -31,7 +31,7 @@ pub fn convert_to_string(bytes: &[u8]) -> String {
 pub fn okay_val(data: Option<Vec<String>>) -> String {
     match data {
         Some(response_data) => {
-            let response_string: String = response_data.join("-");
+            let response_string: String = response_data.join("=");
             let hexed_response: String = hex::encode(response_string);
             hexed_response
         }
