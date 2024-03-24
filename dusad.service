@@ -4,8 +4,8 @@ Description=dusad, A server for managing encrypted files and data
 [Service]
 User=dusa
 Group=dusa
+RuntimeDirectory=dusa
 WorkingDirectory=/var/dusa
-ExecStartPre=-/bin/mkdir /var/run/dusa
 ExecStartPre=-/bin/chown dusa:dusa /var/run/dusa
 ExecStart=/usr/bin/dusad
 Restart=always
