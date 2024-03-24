@@ -13,8 +13,8 @@ update: build
 
 user_creation:
 	@echo -e "${GREEN}**Creating dusa user**${NC}"
-	@-groupadd --system --gid 100  dusa > /dev/null
-	@-useradd dusa --uid 100 --gid 100 -s/bin/nologin -d/dev/null > /dev/null
+	@-/bin/groupadd --system --gid 100  dusa > /dev/null
+	@-/bin/useradd dusa --uid 100 --gid 100 -s/bin/nologin -d/dev/null > /dev/null
 	@echo -e "${GREEN}**USER AND GROUPS CREATED${NC}**"
 
 init:
@@ -33,8 +33,8 @@ build:
 	@mv -v ./target/release/cli /usr/bin/dusa
 	@chmod +x -v /usr/bin/dusad /usr/bin/dusa
 	@echo -e "${GREEN} Setting additional permission on the applications${NC}"
-	setcap cap_chown=ep /usr/bin/dusa
-	setcap cap_chown=ep /usr/bin/dusad
+	/bin/setcap cap_chown=ep /usr/bin/dusa
+	/bin/setcap cap_chown=ep /usr/bin/dusad
 	@echo -e "${GREEN}Application built!${NC}"
 
 register:

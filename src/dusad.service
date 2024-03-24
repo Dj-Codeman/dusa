@@ -1,10 +1,12 @@
 [Unit]
-Description=dusa encryption store and container
+Description=dusad, A server for managing encrypted files and data
 
 [Service]
 User=dusa
 Group=dusa
-WorkingDirectory=/usr/recs
+WorkingDirectory=/var/dusa
+ExecStartPre=-/bin/mkdir /var/run/dusa
+ExecStartPre=-/bin/chown dusa:dusa /var/run/dusa
 ExecStart=/usr/bin/dusad
 Restart=always
 StandardOutput=append:/var/log/dusad.log
