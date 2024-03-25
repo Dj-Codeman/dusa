@@ -12,7 +12,7 @@ use std::net::Shutdown;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::{fs, thread};
-use system::{create_hash, del_file, is_path, truncate};
+use system::{create_hash, del_file, path_present, truncate, ClonePath, PathType};
 
 fn main() {
     // Make sure we are running as the dusa user
@@ -28,16 +28,16 @@ fn main() {
     recs::set_prog("dusa");
 
     // Defining where the socket file is
-    let _ = match is_path("/var/run/dusa") {
+    let _ = match path_present(&PathType::Str("/var/run/dusa".into())).unwrap() {
         true => (), // nothing no folder is needed
         false => create_dir("/var/run/dusa").unwrap(),
     };
 
-    let socket_path: &str = "/var/run/dusa/dusa.sock";
+    let socket_path: PathType = PathType::Str("/var/run/dusa/dusa.sock".into());
 
     // Setting up the new socket file
-    let _ = del_file(socket_path); // ignore incase there wasn't a socket previously, ie clean install, crashes
-    let listener: UnixListener = match UnixListener::bind(socket_path) {
+    let _ = del_file(socket_path.clone_path()); // ignore incase there wasn't a socket previously, ie clean install, crashes
+    let listener: UnixListener = match UnixListener::bind(socket_path.clone_path()) {
         Ok(d) => d,
         Err(e) => {
             halt(&format!(
@@ -49,7 +49,7 @@ fn main() {
     };
 
     // Changing the permissions the socket
-    let socket_metadata = match fs::metadata(socket_path) {
+    let socket_metadata = match fs::metadata(socket_path.clone_path()) {
         Ok(d) => d,
         Err(e) => {
             halt(&format!(
@@ -162,7 +162,7 @@ fn process_command(command_str: String) -> String {
         Some(&"insert") => {
             let owner: String = parts.get(1).unwrap_or(&"").to_string();
             let name: String = parts.get(2).unwrap_or(&"").to_string();
-            let path: String = parts.get(3).unwrap_or(&"").to_string();
+            let path: PathType = PathType::Content(parts.get(3).unwrap_or(&"").to_string());
             // Taking ownership of the file
             match insert(path, owner, name) {
                 Ok(_) => okay_val(None),
@@ -182,8 +182,8 @@ fn process_command(command_str: String) -> String {
             match retrive(owner, name, uid) {
                 Ok((file_path, file_home)) => {
                     let mut response: Vec<String> = vec![];
-                    response.push(file_path);
-                    response.push(file_home);
+                    response.push(file_path.to_string());
+                    response.push(file_home.to_string());
                     okay_val(Some(response))
                 }
 
@@ -207,7 +207,7 @@ fn process_command(command_str: String) -> String {
         Some(&"ping") => {
             let owner = parts.get(1).unwrap_or(&"").to_string();
             let name = parts.get(2).unwrap_or(&"").to_string();
-            match ping(owner, name) {
+            match ping(owner, name).unwrap() {
                 true => okay_val(None),
                 false => nokay_val(),
             }

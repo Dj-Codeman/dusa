@@ -390,7 +390,7 @@ checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
 [[package]]
 name = "logging"
 version = "0.2.1"
-source = "git+https://github.com/Dj-Codeman/logger.git#b7ef94ec7d4d575a0384b6c5ded3a9ce097a5261"
+source = "git+https://github.com/Dj-Codeman/logger.git#aaa9aba9662dd5486ce5d573de09c879b1fce1f5"
 dependencies = [
  "chrono",
  "system",
@@ -547,9 +547,9 @@ dependencies = [
 
 [[package]]
 name = "rayon"
-version = "1.9.0"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4963ed1bc86e4f3ee217022bd855b297cef07fb9eac5dfa1f788b220b49b3bd"
+checksum = "b418a60154510ca1a002a752ca9714984e21e4241e804d32555251faf8b78ffa"
 dependencies = [
  "either",
  "rayon-core",
@@ -567,8 +567,8 @@ dependencies = [
 
 [[package]]
 name = "recs"
-version = "1.1.0"
-source = "git+https://github.com/Dj-Codeman/recs.git#26be0be103853e0858721e0f6242d26ce0359e7d"
+version = "1.1.2"
+source = "git+https://github.com/Dj-Codeman/recs.git#eb32bc08c812dafaa2bc797714bd7585738ed95c"
 dependencies = [
  "aes",
  "base64",
@@ -687,7 +687,7 @@ checksum = "7eb0b34b42edc17f6b7cac84a52a1c5f0e1bb2227e997ca9011ea3dd34e8610b"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.53",
+ "syn 2.0.55",
 ]
 
 [[package]]
@@ -819,9 +819,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.53"
+version = "2.0.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7383cd0e49fff4b6b90ca5670bfd3e9d6a733b3f90c686605aa7eec8c4996032"
+checksum = "002a1b3dbf967edfafc32655d0f377ab0bb7b994aa1d32c8cc7e9b8bf3ebb8f0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -846,10 +846,12 @@ dependencies = [
 [[package]]
 name = "system"
 version = "0.1.1"
-source = "git+https://github.com/Dj-Codeman/system.git#171db9c5f61e153f5dde037e601f58b8791864eb"
+source = "git+https://github.com/Dj-Codeman/system.git#534effc7bd453c8b397b6db833a21102a9014b27"
 dependencies = [
  "flate2",
  "hex",
+ "serde",
+ "serde_json",
  "sha2",
  "tar",
 ]
@@ -972,7 +974,7 @@ dependencies = [
  "once_cell",
  "proc-macro2",
  "quote",
- "syn 2.0.53",
+ "syn 2.0.55",
  "wasm-bindgen-shared",
 ]
 
@@ -994,7 +996,7 @@ checksum = "e94f17b526d0a461a191c78ea52bbce64071ed5c04c9ffe424dcb38f74171bb7"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.53",
+ "syn 2.0.55",
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]

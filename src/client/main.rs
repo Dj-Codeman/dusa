@@ -10,7 +10,7 @@ use std::fs::canonicalize;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::process::exit;
-use system::{create_hash, is_path, truncate};
+use system::{create_hash, path_present, truncate, PathType};
 // use users::{Groups, Users, UsersCache};
 
 fn main() {
@@ -22,7 +22,7 @@ fn main() {
 
     // Define mode based on arguments given
     enum ProgramMode {
-        StoreFile(String, String, String),
+        StoreFile(String, String, PathType),
         RetrieveFile(String, String),
         EncryptText(String),
         DecryptText(String),
@@ -36,7 +36,7 @@ fn main() {
     let mode: ProgramMode = match command.as_ref() {
         Some(cmd) => match cmd.as_str() {
             "encrypt-file" => match (arg_1, arg_2, arg_3) {
-                (Some(owner), Some(name), Some(path)) => ProgramMode::StoreFile(owner, name, path),
+                (Some(owner), Some(name), Some(path)) => ProgramMode::StoreFile(owner, name, PathType::Content(path)),
                 _ => ProgramMode::Invalid,
             },
             "decrypt-file" => match (arg_1, arg_2) {
@@ -70,7 +70,7 @@ fn main() {
     match mode {
         ProgramMode::StoreFile(owner, name, path) => {
             // ensuring path exists
-            let safe_path: String = match is_path(&path) {
+            let safe_path: PathType = match path_present(&path).unwrap() {
                 true => path,
                 false => panic!("Path specified isn't valid"),
             };
