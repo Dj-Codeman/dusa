@@ -13,8 +13,8 @@ update: build
 
 user_creation:
 	@echo -e "${GREEN}**Creating dusa user**${NC}"
-	@groupadd --system dusa > /dev/null
-	@useradd dusa -s/bin/nologin -d/dev/null > /dev/null
+	@-/bin/groupadd --system dusa > /dev/null
+	@-/bin/useradd dusa -s/bin/nologin -d/dev/null > /dev/null
 	@echo -e "${GREEN}**USER AND GROUPS CREATED${NC}**"
 
 init:
