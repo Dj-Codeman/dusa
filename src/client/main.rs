@@ -1,211 +1,244 @@
-#[path = "../shared/shared.rs"]
-mod shared;
-use shared::get_id;
+mod cli;
+use cli::build_cli;
+use common::shared::{convert_to_string, get_id, no_kay_val, okay_val, Actions};
+use common::warn::{Errors, OkWarning, UnifiedResult as uf, Warnings};
+use common::SOCKET_PATH;
 use libc::geteuid;
 use nix::unistd::{chown, Gid, Uid};
 use pretty::*;
-use recs::errors::{RecsError, RecsErrorType, RecsRecivedErrors};
-use std::path::{Path, PathBuf};
-use std::fs::canonicalize;
+use recs::errors::{RecsError, RecsErrorType};
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
+use std::path::PathBuf;
 use std::process::exit;
-use system::{create_hash, path_present, truncate, PathType};
-// use users::{Groups, Users, UsersCache};
+use system::{create_hash, truncate, PathType};
+
+type Callback = fn(clap::ArgMatches, Warnings, Errors) -> uf<String>;
+
+enum ProgramMode {
+    StoreFile(Callback),
+    RetrieveFile(Callback),
+    EncryptText(Callback),
+    DecryptText(Callback),
+    RemoveFile(Callback),
+    Invalid,
+}
 
 fn main() {
-    // Parse command-line arguments
-    let args: Vec<String> = std::env::args().collect();
+    // clapping
+    let cmd: clap::ArgMatches = build_cli().get_matches();
 
-    // Define mode based on arguments given
-    let (command, arg_1, arg_2, arg_3) = parse_arguments(&args);
+    // Get operating mode
+    let (ef, df, et, dt, rf) = (
+        cmd.get_flag("encrypt_file"),
+        cmd.get_flag("decrypt_file"),
+        cmd.get_flag("encrypt_text"),
+        cmd.get_flag("decrypt_text"),
+        cmd.get_flag("remove_file"),
+    );
 
-    // Define mode based on arguments given
-    enum ProgramMode {
-        StoreFile(String, String, PathType),
-        RetrieveFile(String, String),
-        EncryptText(String),
-        DecryptText(String),
-        RemoveFile(String, String),
-
-        Help,
-        Invalid,
-    }
-
-    // Parse command given
-    let mode: ProgramMode = match command.as_ref() {
-        Some(cmd) => match cmd.as_str() {
-            "encrypt-file" => match (arg_1, arg_2, arg_3) {
-                (Some(owner), Some(name), Some(path)) => ProgramMode::StoreFile(owner, name, PathType::Content(path)),
-                _ => ProgramMode::Invalid,
-            },
-            "decrypt-file" => match (arg_1, arg_2) {
-                (Some(owner), Some(name)) => ProgramMode::RetrieveFile(owner, name),
-                _ => ProgramMode::Invalid,
-            },
-            "encrypt-text" => match arg_1 {
-                Some(data) => ProgramMode::EncryptText(data),
-                None => ProgramMode::Invalid,
-            },
-            "decrypt-text" => match arg_1 {
-                // data key chunk
-                Some(data) => ProgramMode::DecryptText(data),
-                _ => ProgramMode::Invalid,
-            },
-            "remove-file" => match (arg_1, arg_2) {
-                (Some(owner), Some(name)) => ProgramMode::RemoveFile(owner, name),
-                _ => ProgramMode::Invalid,
-            },
-            "list-file" => match (arg_1, arg_2) {
-                (Some(_), Some(_)) => todo!(),
-                _ => ProgramMode::Invalid,
-            },
-            "status" => ProgramMode::Invalid,
-            _ => ProgramMode::Help,
-        },
-        None => ProgramMode::Invalid,
+    let mode: ProgramMode = match (ef, df, et, dt, rf) {
+        (true, false, false, false, false) => ProgramMode::StoreFile(encrypt_file),
+        (false, true, false, false, false) => ProgramMode::RetrieveFile(decrypt_file),
+        (false, false, true, false, false) => ProgramMode::EncryptText(encrypt_text),
+        (false, false, false, true, false) => ProgramMode::DecryptText(decrypt_text),
+        (false, false, false, false, true) => ProgramMode::RemoveFile(remove_file),
+        _ => ProgramMode::Invalid,
     };
 
-    // Communicating with server after parsing
-    match mode {
-        ProgramMode::StoreFile(owner, name, path) => {
-            // ensuring path exists
-            let safe_path: PathType = match path_present(&path).unwrap() {
-                true => path,
-                false => panic!("Path specified isn't valid"),
-            };
-
-            let absolute_path = match canonicalize(&safe_path.to_owned()) {
-                Ok(d) => d,
-                Err(e) => panic!("{}", e.to_string()),
-            };
-
-            // Changing owner ship of the file
-            let (uid, gid) = get_id();
-            set_file_ownership(&absolute_path, uid, gid);
-
-            // Pusing commands to the array
-            let mut command_data: Vec<String> = vec![];
-            command_data.push(String::from("insert"));
-            command_data.push(owner);
-            command_data.push(name);
-            command_data.push(absolute_path.into_os_string().into_string().unwrap());
-
-            // Creating the message
-            let message: String = create_message(command_data);
-
-            // Sending the message
-            match send_command(message) {
-                Ok(d) => pass(&d),
-                Err(e) => recs::errors::RecsRecivedErrors::display(e, false),
-            }
+    let result: uf<String> = match mode {
+        ProgramMode::StoreFile(callback) => {
+            callback(cmd, Warnings::new_container(), Errors::new_container())
         }
-
-        ProgramMode::RetrieveFile(owner, name) => {
-            let mut command_data: Vec<String> = vec![];
-            command_data.push(String::from("retrieve"));
-            command_data.push(owner);
-            command_data.push(name);
-
-            let message: String = create_message(command_data);
-
-            use crate::shared::convert_to_string;
-            match send_command(message) {
-                Ok(d) => {
-                    let bytes = d.replace("\0", "");
-                    let bytes_string = convert_to_string(bytes.as_bytes());
-                    let paths: Vec<&str> = bytes_string.split('-').collect();
-                    use std::fs;
-                    let data = fs::read_to_string(&paths[0]);
-                    match data {
-                        Ok(d) => {
-                            output("GREEN", &d);
-                            pass(&format!("Temporary path: {}", &paths[0]))
-                        },
-                        Err(_) => halt(&format!("The data is a binary located at, {}", &paths[0]))
-                    }
-                }
-                Err(e) => recs::errors::RecsRecivedErrors::display(e, false),
-            }
+        ProgramMode::RetrieveFile(callback) => {
+            callback(cmd, Warnings::new_container(), Errors::new_container())
         }
-
-        ProgramMode::EncryptText(data) => {
-            let mut command_data: Vec<String> = vec![];
-            command_data.push(String::from("encrypt"));
-            command_data.push(data);
-
-            let message: String = create_message(command_data);
-            notice(&message);
-
-            match send_command(message) {
-                Ok(d) => pass(&d),
-                Err(e) => recs::errors::RecsRecivedErrors::display(e, false),
-            }
+        ProgramMode::EncryptText(callback) => {
+            callback(cmd, Warnings::new_container(), Errors::new_container())
         }
-
-        ProgramMode::DecryptText(data) => {
-            let mut command_data: Vec<String> = vec![];
-            command_data.push(String::from("decrypt"));
-            command_data.push(data);
-
-            let message: String = create_message(command_data);
-
-            match send_command(message) {
-                Ok(d) => pass(&d),
-                Err(e) => recs::errors::RecsRecivedErrors::display(e, false),
-            }
+        ProgramMode::DecryptText(callback) => {
+            callback(cmd, Warnings::new_container(), Errors::new_container())
         }
-
-        ProgramMode::RemoveFile(owner, name) => {
-            let mut command_data: Vec<String> = vec![];
-            command_data.push(String::from("remove"));
-            command_data.push(owner);
-            command_data.push(name);
-
-            let message: String = create_message(command_data);
-
-            match send_command(message) {
-                Ok(d) => pass(&d),
-                Err(e) => recs::errors::RecsRecivedErrors::display(e, false),
-            }
+        ProgramMode::RemoveFile(callback) => {
+            callback(cmd, Warnings::new_container(), Errors::new_container())
         }
-
-        ProgramMode::Help => {
-            help(args);
-            exit(0);
-        }
-
         ProgramMode::Invalid => {
             warn("Error: Parsing arguments failed.");
-            help(args);
-            exit(1);
+            exit(1)
+        }
+    };
+
+    if result.clone().resolve() == okay_val(None) {
+        pass("Task Finished");
+    } else if result.clone().resolve() == no_kay_val() {
+        halt("Errors have happened");
+    } else if result.clone().resolve().is_empty() {
+        dump("Result is empty")
+    } else {
+        notice(&format!("{}", result.resolve()))
+    }
+}
+
+fn encrypt_file(cmd: clap::ArgMatches, warnings: Warnings, mut errors: Errors) -> uf<String> {
+    // ensuring path exists
+    let file_path: PathType =
+        get_file_path(errors.clone(), warnings, cmd.get_one::<PathBuf>("path")).resolve();
+
+    // Changing owner ship of the file
+    let (uid, gid) = get_id();
+    set_file_ownership(&file_path.to_path_buf(), uid, gid);
+
+    // Pusing commands to the array
+    let mut command_data: Vec<String> = vec![];
+    command_data.push(Actions::EncryptData.to_string());
+    command_data.push(
+        cmd.get_one::<String>("owner")
+            .unwrap_or(&String::from("system"))
+            .to_owned(),
+    );
+    command_data.push(
+        cmd.get_one::<String>("name")
+            .unwrap_or(&String::from("lost"))
+            .to_string(),
+    );
+    command_data.push(file_path.to_string());
+
+    // Creating the message
+    let message: String = create_message(command_data);
+
+    // Sending the message
+    return match send_command(message) {
+        Ok(d) => uf::new(Ok(d)),
+        Err(e) => {
+            errors.0.push(e);
+            uf::new(Err(errors))
+        }
+    };
+}
+
+fn remove_file(cmd: clap::ArgMatches, _warnings: Warnings, mut errors: Errors) -> uf<String> {
+    let mut command_data: Vec<String> = vec![];
+    command_data.push(Actions::RemoveFile.to_string());
+    command_data.push(
+        cmd.get_one::<String>("owner")
+            .unwrap_or(&String::from("system"))
+            .to_owned(),
+    );
+    command_data.push(
+        cmd.get_one::<String>("name")
+            .unwrap_or(&String::from("lost"))
+            .to_string(),
+    );
+
+    let message: String = create_message(command_data);
+
+    match send_command(message) {
+        Ok(d) => uf::new(Ok(d)),
+        Err(e) => {
+            errors.0.push(e);
+            uf::new(Err(errors))
         }
     }
 }
 
-fn parse_arguments(
-    args: &[String],
-) -> (
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-) {
-    let command = args.get(1).cloned();
-    let owner = args.get(2).cloned();
-    let name = args.get(3).cloned();
-    let path = args.get(4).cloned();
+fn decrypt_file(cmd: clap::ArgMatches, _warnings: Warnings, mut errors: Errors) -> uf<String> {
+    let mut command_data: Vec<String> = vec![];
+    command_data.push(Actions::DecryptData.to_string());
+    command_data.push(
+        cmd.get_one::<String>("owner")
+            .unwrap_or(&String::from("system"))
+            .to_owned(),
+    );
+    command_data.push(
+        cmd.get_one::<String>("name")
+            .unwrap_or(&String::from("lost"))
+            .to_string(),
+    );
 
-    (command, owner, name, path)
+    let message: String = create_message(command_data);
+
+    match send_command(message) {
+        Ok(d) => {
+            let bytes: String = d.data.replace("\0", "");
+            let bytes_string: String = convert_to_string(bytes.as_bytes());
+            let paths: Vec<&str> = bytes_string.split('-').collect();
+            use std::fs;
+            let data = fs::read_to_string(&paths[0]);
+            match data {
+                Ok(d) => {
+                    output("GREEN", &d);
+                    return uf::new(Ok(OkWarning {
+                        data: PathType::Str(paths[0].into()).to_string(),
+                        warning: _warnings,
+                    }));
+                }
+                Err(_) => {
+                    return uf::new(Ok(OkWarning {
+                        data: PathType::Str(paths[0].into()).to_string(),
+                        warning: _warnings,
+                    }));
+                }
+            }
+        }
+        Err(e) => {
+            errors.0.push(e);
+            return uf::new(Err(errors));
+        }
+    }
 }
 
-fn set_file_ownership(path: &PathBuf, uid: Uid, gid: Gid) {
-    chown(path, Some(uid), Some(gid)).expect("Failed to set file ownership");
+fn decrypt_text(cmd: clap::ArgMatches, _warnings: Warnings, mut errors: Errors) -> uf<String> {
+    let data: String = cmd
+        .get_one::<String>("data")
+        .unwrap_or(&hex::encode(String::from("Invalid Command")))
+        .to_string();
+
+    let mut command_data: Vec<String> = vec![];
+    command_data.push(Actions::DecryptText.to_string());
+    command_data.push(data.to_string());
+
+    let message: String = create_message(command_data);
+
+    match send_command(message) {
+        Ok(mut d) => {
+            d.data = String::from_utf8(
+                hex::decode(d.data.replace("\0", "").as_bytes())
+                    .unwrap_or(String::from("Corrupted").as_bytes().to_vec()),
+            )
+            .unwrap_or("Not String".to_owned());
+            return uf::new(Ok(d));
+        }
+        Err(e) => {
+            errors.0.push(e);
+            uf::new(Err(errors))
+        }
+    }
+}
+
+fn encrypt_text(cmd: clap::ArgMatches, _warnings: Warnings, mut errors: Errors) -> uf<String> {
+    let data: String = cmd
+        .get_one::<String>("data")
+        .unwrap_or(&hex::encode(String::from("Invalid Command")))
+        .to_string();
+
+    let mut command_data: Vec<String> = vec![];
+    command_data.push(Actions::EncryptText.to_string());
+    command_data.push(data.to_string());
+
+    let message: String = create_message(command_data);
+
+    match send_command(message) {
+        Ok(d) => uf::new(Ok(d)),
+        Err(e) => {
+            errors.0.push(e);
+            uf::new(Err(errors))
+        }
+    }
 }
 
 fn create_message(mut data: Vec<String>) -> String {
     // for certain functions the clients uid has to be sent too
-    let current_uid: u32 = unsafe { geteuid() }; 
+    let current_uid: u32 = unsafe { geteuid() };
     data.push(format!("{}", current_uid));
 
     let command_string: String = data.join("*");
@@ -216,22 +249,48 @@ fn create_message(mut data: Vec<String>) -> String {
 
     secure_command_array.push(hexed_command);
     secure_command_array.push(hexed_hash);
-    
+
     let secure_command: String = secure_command_array.join("Z");
     secure_command
 }
 
-fn send_command(command: String) -> Result<String, RecsRecivedErrors> {
-    let socket_path: &Path = Path::new("/var/run/dusa/dusa.sock");
+fn get_file_path(
+    mut errors: Errors,
+    _warnings: Warnings,
+    option_path_ref: Option<&PathBuf>,
+) -> uf<PathType> {
+    let err = match option_path_ref {
+        Some(d) => match d.to_path_buf().canonicalize() {
+            Ok(d) => {
+                let result = OkWarning {
+                    data: PathType::PathBuf(d),
+                    warning: Warnings::new(Vec::new()),
+                };
+                return uf::new(Ok(result));
+            }
+            Err(err) => RecsError::new_details(RecsErrorType::InvalidFile, &format!("{}", err)),
+        },
+        None => RecsError::new(RecsErrorType::InvalidFile),
+    };
+    errors.0.push(err);
+    return uf::new(Err(Errors::new(Vec::new())));
+}
 
+fn set_file_ownership(path: &PathBuf, uid: Uid, gid: Gid) {
+    chown(path, Some(uid), Some(gid)).expect("Failed to set file ownership");
+}
+
+fn send_command(command: String) -> Result<OkWarning<String>, RecsError> {
     // Connect to the Unix domain socket
-    let mut stream = match UnixStream::connect(socket_path) {
+    let mut stream = match UnixStream::connect(
+        SOCKET_PATH(false, Warnings::new_container(), Errors::new_container()).resolve(),
+    ) {
         Ok(stream) => stream,
         Err(e) => {
-            return Err(RecsRecivedErrors::RecsError(RecsError::new_details(
+            return Err(RecsError::new_details(
                 RecsErrorType::Error,
                 &format!("Socket connection error: {}", e),
-            )))
+            ))
         }
     };
 
@@ -239,10 +298,10 @@ fn send_command(command: String) -> Result<String, RecsRecivedErrors> {
     match stream.write(command.as_bytes()) {
         Ok(_) => (),
         Err(e) => {
-            return Err(RecsRecivedErrors::RecsError(RecsError::new_details(
+            return Err(RecsError::new_details(
                 RecsErrorType::Error,
                 &format!("Error writing to socket: {}", e),
-            )))
+            ))
         }
     };
 
@@ -250,46 +309,29 @@ fn send_command(command: String) -> Result<String, RecsRecivedErrors> {
     match stream.flush() {
         Ok(_) => (),
         Err(e) => {
-            warn("Data was fucked");
-            return Err(RecsRecivedErrors::RecsError(RecsError::new_details(
+            return Err(RecsError::new_details(
                 RecsErrorType::Error,
                 &format!("Error flushing socket: {}", e),
-            )));
+            ));
         }
     };
 
     // Read the response from the server
-    let mut buffer = vec![0; 89200];
+    let mut buffer: Vec<u8> = vec![0; 89200];
     match stream.read_to_end(&mut buffer) {
         Ok(_) => {
             // Convert the received data into a string
             let response = String::from_utf8_lossy(&buffer).to_string();
-            Ok(response)
+            Ok(OkWarning {
+                data: response,
+                warning: Warnings::new_container(),
+            })
         }
         Err(e) => {
-            warn("Data was fucked");
-            Err(RecsRecivedErrors::RecsError(RecsError::new_details(
+            return Err(RecsError::new_details(
                 RecsErrorType::Error,
                 &format!("Error reading from socket: {}", e),
-            )))
+            ));
         }
     }
-}
-
-fn help(args: Vec<String>) {
-    output(
-        "YELLOW",
-        &format!(
-            "Usage: {} <command> <owner> <name> [file_path], {} <text> [data]",
-            args[0], args[0]
-        ),
-    );
-    output(
-        "GREEN",
-        "Commands: encrypt-file | decrypt-file | encrypt-text | decrypt-text | remove-file | list-file | status ",
-    );
-    output(
-        "BLUE",
-        "Version X.xx"
-    )
 }

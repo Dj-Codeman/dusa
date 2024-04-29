@@ -1,18 +1,19 @@
 mod errors;
 #[path = "../shared/shared.rs"]
 mod shared;
+use common::warn::{Errors, Warnings};
+use common::SOCKET_PATH;
 use nix::unistd::{setgid, setuid};
 use pretty::{halt, notice, output, warn};
 use recs::errors::RecsRecivedErrors;
 use recs::{decrypt_raw, encrypt_raw, initialize, insert, ping, remove, retrive, update_map};
-use shared::{convert_to_string, get_id, nokay_val, okay_val};
-use std::fs::create_dir;
+use shared::{convert_to_string, get_id, no_kay_val, okay_val};
 use std::io::{Read, Write};
 use std::net::Shutdown;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::{fs, thread};
-use system::{create_hash, del_file, path_present, truncate, ClonePath, PathType};
+use system::{create_hash, truncate, ClonePath, PathType};
 
 fn main() {
     // Make sure we are running as the dusa user
@@ -27,17 +28,12 @@ fn main() {
     recs::set_debug(true);
     recs::set_prog("dusa");
 
-    // Defining where the socket file is
-    let _ = match path_present(&PathType::Str("/var/run/dusa".into())).unwrap() {
-        true => (), // nothing no folder is needed
-        false => create_dir("/var/run/dusa").unwrap(),
-    };
-
-    let socket_path: PathType = PathType::Str("/var/run/dusa/dusa.sock".into());
-
     // Setting up the new socket file
-    let _ = del_file(socket_path.clone_path()); // ignore incase there wasn't a socket previously, ie clean install, crashes
-    let listener: UnixListener = match UnixListener::bind(socket_path.clone_path()) {
+    let listener: UnixListener = match UnixListener::bind(
+        SOCKET_PATH(true, Warnings::new_container(), Errors::new_container())
+            .resolve()
+            .clone_path(),
+    ) {
         Ok(d) => d,
         Err(e) => {
             halt(&format!(
@@ -49,7 +45,11 @@ fn main() {
     };
 
     // Changing the permissions the socket
-    let socket_metadata = match fs::metadata(socket_path.clone_path()) {
+    let socket_metadata = match fs::metadata(
+        SOCKET_PATH(false, Warnings::new_container(), Errors::new_container())
+            .resolve()
+            .clone_path(),
+    ) {
         Ok(d) => d,
         Err(e) => {
             halt(&format!(
@@ -62,7 +62,10 @@ fn main() {
     let mut permissions = socket_metadata.permissions();
     permissions.set_mode(0o660); // Set desired permissions
 
-    match fs::set_permissions(socket_path, permissions) {
+    match fs::set_permissions(
+        SOCKET_PATH(false, Warnings::new_container(), Errors::new_container()).resolve(),
+        permissions,
+    ) {
         Ok(()) => (),
         Err(e) => halt(&format!(
             "We own the socket but we can't change its permissions, all i know is '{}'",
@@ -95,9 +98,8 @@ fn handle_client(mut stream: UnixStream) {
                 }
 
                 // Convert the received data into a string
-                let command_str: String = valdate_command(&buffer[..size]);
-                notice("Command recived, processing");
-                output("YELLOW", &format!("Recived command : {}", &command_str));
+                let command_str: String = validate_command(&buffer[..size]);
+                notice("Command received, processing");
 
                 if size == buffer.len() {
                     buffer.resize(buffer.len() * 4, 0);
@@ -131,16 +133,16 @@ fn handle_client(mut stream: UnixStream) {
     }
 }
 
-fn valdate_command(buffer: &[u8]) -> String {
+fn validate_command(buffer: &[u8]) -> String {
     let unsafe_string: String = unsafe { String::from_utf8_unchecked(buffer.to_vec()) };
     let unsafe_array: Vec<&str> = unsafe_string.split("Z").collect();
-    let unvalidated_command: String = unsafe_array[0].to_owned();
-    let unvalidated_hash: String = unsafe_array[1].to_owned();
+    let un_validated_command: String = unsafe_array[0].to_owned();
+    let un_validated_hash: String = unsafe_array[1].to_owned();
     let valid_hash: String =
-        hex::encode(truncate(&create_hash(unvalidated_command.clone())[7..], 50));
-    match unvalidated_hash == valid_hash {
+        hex::encode(truncate(&create_hash(un_validated_command.clone())[7..], 50));
+    match un_validated_hash == valid_hash {
         // TODO add some permission checks on what was requested
-        true => convert_to_string(unvalidated_command.as_bytes()),
+        true => convert_to_string(un_validated_command.as_bytes()),
         false => {
             halt("YOUR COMMANDS AIN'T GOOD ROUND HERE SON");
             String::from("GIVE ME ALL THE DATA, sike ass dude")
@@ -159,7 +161,7 @@ fn process_command(command_str: String) -> String {
     let parts: Vec<&str> = command_str.split('*').collect();
 
     match parts.get(0) {
-        Some(&"insert") => {
+        Some(&"0x000") => {
             let owner: String = parts.get(1).unwrap_or(&"").to_string();
             let name: String = parts.get(2).unwrap_or(&"").to_string();
             let path: PathType = PathType::Content(parts.get(3).unwrap_or(&"").to_string());
@@ -168,11 +170,11 @@ fn process_command(command_str: String) -> String {
                 Ok(_) => okay_val(None),
                 Err(e) => {
                     warn(&format!("{:?}", e));
-                    nokay_val()
+                    no_kay_val()
                 }
             }
         }
-        Some(&"retrieve") => {
+        Some(&"0x010") => {
             let owner = parts.get(1).unwrap_or(&"").to_string();
             let name = parts.get(2).unwrap_or(&"").to_string();
             let uid: u32 = match parts.get(3).unwrap_or(&"").parse::<u32>() {
@@ -189,30 +191,30 @@ fn process_command(command_str: String) -> String {
 
                 Err(e) => {
                     warn(&format!("{:?}", e));
-                    nokay_val()
+                    no_kay_val()
                 }
             }
         }
-        Some(&"remove") => {
+        Some(&"0x100") => {
             let owner = parts.get(1).unwrap_or(&"").to_string();
             let name = parts.get(2).unwrap_or(&"").to_string();
             match remove(owner, name) {
                 Ok(_) => okay_val(None),
                 Err(e) => {
                     warn(&format!("{:?}", e));
-                    nokay_val()
+                    no_kay_val()
                 }
             }
         }
-        Some(&"ping") => {
+        Some(&"0x110") => {
             let owner = parts.get(1).unwrap_or(&"").to_string();
             let name = parts.get(2).unwrap_or(&"").to_string();
             match ping(owner, name).unwrap() {
                 true => okay_val(None),
-                false => nokay_val(),
+                false => no_kay_val(),
             }
         }
-        Some(&"encrypt") => {
+        Some(&"0x001") => {
             let data = parts.get(1).unwrap_or(&"").to_string();
             match encrypt_raw(data) {
                 Ok((key, cipher, chunks)) => {
@@ -224,23 +226,23 @@ fn process_command(command_str: String) -> String {
                 }
                 Err(e) => {
                     warn(&format!("{:?}", e));
-                    nokay_val()
+                    no_kay_val()
                 }
             }
         }
-        Some(&"decrypt") => {
+        Some(&"0x011") => {
             let hexed_data: String = parts.get(1).unwrap_or(&"").to_string();
-            let unhexed_data: String = match &hex::decode(hexed_data) {
+            let un_hexed_data: String = match &hex::decode(hexed_data) {
                 Ok(d) => unsafe { String::from_utf8_unchecked(d.to_vec()) },
                 Err(e) => {
                     warn(&format!("{:?}", e));
                     panic!();
-                },
+                }
             };
 
-            notice(&unhexed_data);
+            notice(&un_hexed_data);
 
-            let parts_array: Vec<&str> = unhexed_data.split('=').collect(); //= is the delimiter for the command interchange
+            let parts_array: Vec<&str> = un_hexed_data.split('=').collect(); //= is the delimiter for the command interchange
             let recs_key = parts_array[0].to_owned();
             let recs_data = parts_array[1].to_owned();
             let recs_chunks = parts_array[2].parse::<usize>().unwrap_or(1);
@@ -249,18 +251,18 @@ fn process_command(command_str: String) -> String {
                 Ok(data) => okay_val(Some(vec![String::from_utf8(data).unwrap()])),
                 Err(e) => {
                     warn(&format!("{:?}", e));
-                    nokay_val()
+                    no_kay_val()
                 }
             }
         }
-        Some(&"update_map") => {
+        Some(&"0x111") => {
             let map_num = parts.get(1).unwrap_or(&"0").parse::<u32>().unwrap_or(0);
             if update_map(map_num) {
                 okay_val(None)
             } else {
-                nokay_val()
+                no_kay_val()
             }
         }
-        _ => nokay_val(),
+        _ => no_kay_val(),
     }
 }

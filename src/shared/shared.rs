@@ -1,3 +1,5 @@
+use core::fmt;
+
 use nix::unistd::{Gid, Uid};
 use pretty::halt;
 use users::{Groups, Users, UsersCache};
@@ -28,6 +30,7 @@ pub fn convert_to_string(bytes: &[u8]) -> String {
     string
 }
 
+#[allow(dead_code)]
 pub fn okay_val(data: Option<Vec<String>>) -> String {
     match data {
         Some(response_data) => {
@@ -39,6 +42,43 @@ pub fn okay_val(data: Option<Vec<String>>) -> String {
     }
 }
 
-pub fn nokay_val() -> String {
+#[allow(dead_code)]
+pub fn no_kay_val() -> String {
     hex::encode(String::from("Invalid Command"))
 }
+
+#[allow(dead_code)]
+pub enum Actions {
+    EncryptData,
+    EncryptText,
+    DecryptData,
+    DecryptText,
+    RemoveFile,
+    Version,
+    Ping,
+    UpdateMaps
+}
+
+impl fmt::Display for Actions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self  {
+            Actions::EncryptData => write!(f, "0x000"),
+            Actions::EncryptText => write!(f, "0x001"),
+            Actions::DecryptData => write!(f, "0x010"),
+            Actions::DecryptText => write!(f, "0x011"),
+            Actions::RemoveFile  => write!(f, "0x100"),
+            Actions::Version     => write!(f, "0x101"),
+            Actions::Ping        => write!(f, "0x110"),
+            Actions::UpdateMaps  => write!(f, "0x111"),
+        }   
+    }
+}
+
+// // Struct to encrypt/encode and send back and forth from  the server
+// pub struct Command {
+//     command: Actions,
+//     arguments: Vec<String>,
+// }
+
+// // Struct to capture the return data
+// pub struct Result {}
