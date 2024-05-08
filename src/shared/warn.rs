@@ -33,6 +33,13 @@ impl<T> UnifiedResult<T> {
             }
         }
     }
+
+    pub fn unwrap(self) -> Result<T, Errors>{
+        match self.0 {
+            Ok(d) => return Ok(d.data),
+            Err(e) => return Err(e),
+        }
+    }
 }
 
 impl Warnings {
