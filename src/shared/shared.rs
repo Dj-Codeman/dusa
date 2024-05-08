@@ -1,5 +1,4 @@
 use core::fmt;
-
 use nix::unistd::{Gid, Uid};
 use pretty::halt;
 use users::{Groups, Users, UsersCache};
@@ -56,7 +55,7 @@ pub enum Actions {
     RemoveFile,
     Version,
     Ping,
-    UpdateMaps
+    UpdateMaps,
 }
 
 impl fmt::Display for Actions {
@@ -73,7 +72,6 @@ impl fmt::Display for Actions {
         }   
     }
 }
-
 // // Struct to encrypt/encode and send back and forth from  the server
 // pub struct Command {
 //     command: Actions,

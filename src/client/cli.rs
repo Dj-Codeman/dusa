@@ -1,11 +1,12 @@
 use std::path::PathBuf;
 
 use clap::{value_parser, Arg, Command};
+use common::VERSION;
 
 pub fn build_cli() -> Command {
     Command::new("Dusa")
         .about("A recs based encryption client / server")
-        .version(env!("CARGO_PKG_VERSION"))
+        .version(VERSION)
         .trailing_var_arg(true)
         .arg(
             Arg::new("path")

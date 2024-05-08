@@ -2,16 +2,13 @@ mod cli;
 use cli::build_cli;
 use common::shared::{convert_to_string, get_id, no_kay_val, okay_val, Actions};
 use common::warn::{Errors, OkWarning, UnifiedResult as uf, Warnings};
-use common::SOCKET_PATH;
-use libc::geteuid;
+use common::{create_message, send_command};
 use nix::unistd::{chown, Gid, Uid};
 use pretty::*;
 use recs::errors::{RecsError, RecsErrorType};
-use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::exit;
-use system::{create_hash, truncate, PathType};
+use system::PathType;
 
 type Callback = fn(clap::ArgMatches, Warnings, Errors) -> uf<String>;
 
@@ -236,24 +233,6 @@ fn encrypt_text(cmd: clap::ArgMatches, _warnings: Warnings, mut errors: Errors) 
     }
 }
 
-fn create_message(mut data: Vec<String>) -> String {
-    // for certain functions the clients uid has to be sent too
-    let current_uid: u32 = unsafe { geteuid() };
-    data.push(format!("{}", current_uid));
-
-    let command_string: String = data.join("*");
-    let hexed_command: String = hex::encode(command_string);
-    let hexed_hash: String = hex::encode(truncate(&create_hash(hexed_command.clone())[7..], 50));
-
-    let mut secure_command_array: Vec<String> = vec![];
-
-    secure_command_array.push(hexed_command);
-    secure_command_array.push(hexed_hash);
-
-    let secure_command: String = secure_command_array.join("Z");
-    secure_command
-}
-
 fn get_file_path(
     mut errors: Errors,
     _warnings: Warnings,
@@ -278,60 +257,4 @@ fn get_file_path(
 
 fn set_file_ownership(path: &PathBuf, uid: Uid, gid: Gid) {
     chown(path, Some(uid), Some(gid)).expect("Failed to set file ownership");
-}
-
-fn send_command(command: String) -> Result<OkWarning<String>, RecsError> {
-    // Connect to the Unix domain socket
-    let mut stream = match UnixStream::connect(
-        SOCKET_PATH(false, Warnings::new_container(), Errors::new_container()).resolve(),
-    ) {
-        Ok(stream) => stream,
-        Err(e) => {
-            return Err(RecsError::new_details(
-                RecsErrorType::Error,
-                &format!("Socket connection error: {}", e),
-            ))
-        }
-    };
-
-    // Write the command to the server
-    match stream.write(command.as_bytes()) {
-        Ok(_) => (),
-        Err(e) => {
-            return Err(RecsError::new_details(
-                RecsErrorType::Error,
-                &format!("Error writing to socket: {}", e),
-            ))
-        }
-    };
-
-    // Flush the stream to ensure all data is sent
-    match stream.flush() {
-        Ok(_) => (),
-        Err(e) => {
-            return Err(RecsError::new_details(
-                RecsErrorType::Error,
-                &format!("Error flushing socket: {}", e),
-            ));
-        }
-    };
-
-    // Read the response from the server
-    let mut buffer: Vec<u8> = vec![0; 89200];
-    match stream.read_to_end(&mut buffer) {
-        Ok(_) => {
-            // Convert the received data into a string
-            let response = String::from_utf8_lossy(&buffer).to_string();
-            Ok(OkWarning {
-                data: response,
-                warning: Warnings::new_container(),
-            })
-        }
-        Err(e) => {
-            return Err(RecsError::new_details(
-                RecsErrorType::Error,
-                &format!("Error reading from socket: {}", e),
-            ));
-        }
-    }
 }

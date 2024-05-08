@@ -1,13 +1,11 @@
 mod errors;
-#[path = "../shared/shared.rs"]
-mod shared;
+use common::shared::{convert_to_string, get_id, no_kay_val, okay_val};
 use common::warn::{Errors, Warnings};
 use common::SOCKET_PATH;
 use nix::unistd::{setgid, setuid};
 use pretty::{halt, notice, output, warn};
 use recs::errors::RecsRecivedErrors;
 use recs::{decrypt_raw, encrypt_raw, initialize, insert, ping, remove, retrive, update_map};
-use shared::{convert_to_string, get_id, no_kay_val, okay_val};
 use std::io::{Read, Write};
 use std::net::Shutdown;
 use std::os::unix::fs::PermissionsExt;
@@ -138,8 +136,10 @@ fn validate_command(buffer: &[u8]) -> String {
     let unsafe_array: Vec<&str> = unsafe_string.split("Z").collect();
     let un_validated_command: String = unsafe_array[0].to_owned();
     let un_validated_hash: String = unsafe_array[1].to_owned();
-    let valid_hash: String =
-        hex::encode(truncate(&create_hash(un_validated_command.clone())[7..], 50));
+    let valid_hash: String = hex::encode(truncate(
+        &create_hash(un_validated_command.clone())[7..],
+        50,
+    ));
     match un_validated_hash == valid_hash {
         // TODO add some permission checks on what was requested
         true => convert_to_string(un_validated_command.as_bytes()),
