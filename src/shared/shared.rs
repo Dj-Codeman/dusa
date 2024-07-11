@@ -18,7 +18,7 @@ use users::{Groups, Users, UsersCache};
 /// Current version of the protocol, derived from the package version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Time to live in seconds for file that are decrypted.
-pub const TTL: u64 = 5;
+pub const TTL: u64 = 60;
 
 /// Getting the current uid
 pub fn get_id() -> (Uid, Gid) {

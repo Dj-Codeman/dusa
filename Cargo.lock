@@ -265,9 +265,9 @@ dependencies = [
 
 [[package]]
 name = "clap_complete"
-version = "4.5.7"
+version = "4.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d598e88f6874d4b888ed40c71efbcbf4076f1dfbae128a08a8c9e45f710605d"
+checksum = "5b4be9c4c4b1f30b78d8a750e0822b6a6102d97e62061c583a6c1dea2dfb33ae"
 dependencies = [
  "clap",
 ]
@@ -1130,7 +1130,7 @@ dependencies = [
 [[package]]
 name = "recs"
 version = "2.5.1"
-source = "git+https://github.com/Dj-Codeman/recs.git?branch=soon_stable#435eca63dddd28280e34391087cb7c0391f3231d"
+source = "git+https://github.com/Dj-Codeman/recs.git#435eca63dddd28280e34391087cb7c0391f3231d"
 dependencies = [
  "aes",
  "base64 0.21.7",

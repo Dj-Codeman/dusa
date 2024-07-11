@@ -1,0 +1,16 @@
+[Unit]
+Description=dusad, A server for managing encrypted files and data
+
+[Service]
+User=dusa
+Group=dusa
+RuntimeDirectory=dusa
+WorkingDirectory=/var/dusa
+ExecStartPre=-/bin/chown dusa:dusa /var/run/dusa
+ExecStart=/usr/bin/dusad
+Restart=always
+StandardOutput=append:/var/log/dusad.log
+StandardError=append:/var/log/dusad.log
+
+[Install]
+WantedBy=multi-user.target

@@ -3,7 +3,7 @@ mod log;
 use {
     cli::build_cli, dusa_common::{
         get_id, prefix::{receive_message, send_message}, set_file_ownership, DecryptResponseData, Message, MessageType, RequestPayload, RequestRecsPlainText, RequestRecsSimple, RequestRecsWrite, SOCKET_PATH, VERSION
-    }, nix::unistd::{geteuid}, pretty::{halt, pass, warn}, std::{
+    }, nix::unistd::geteuid, pretty::{halt, pass, warn}, std::{
         fs, os::unix::net::UnixStream, path::PathBuf, process::exit, time::Duration
     }, system::{
         errors::{
@@ -32,7 +32,10 @@ fn main() {
     };
 
     // clapping
-    let cmd: clap::ArgMatches = build_cli().get_matches();
+    let cmd: clap::ArgMatches = build_cli()
+        .version(VERSION)
+        .about("A client daemon implementation of the RECS library")
+        .get_matches();
 
     enum ProgramMode {
         StoreFile(Callback),
@@ -191,8 +194,6 @@ fn main() {
             uid: u32::from(geteuid()),
         };
 
-        println!("{:?}", &request_data);
-
         let msg = Message {
             version: VERSION.to_owned(),
             msg_type: MessageType::Request,
@@ -248,7 +249,9 @@ fn main() {
                 // copy the file to the original path
                 match fs::copy(data.temp_p, data.orig_p) {
                     Ok(d) => if d != 0 {
-                        pass(&format!("{:#?}", data_cloned));
+                        log::log(format!("{:#?}", data_cloned));
+                        pass("done");
+                        unreachable!()
                     },
                     Err(e) => {
                         errors.push(ErrorArrayItem::from(e));
@@ -287,7 +290,7 @@ fn main() {
                 .get_one::<String>("data")
                 .unwrap_or(&String::from("hello world"))
                 .to_owned(),
-            uid: unsafe { u32::from(geteuid()) },
+            uid: u32::from(geteuid()),
         };
 
         let msg = Message {
@@ -353,7 +356,7 @@ fn main() {
                 .get_one::<String>("data")
                 .unwrap_or(&String::from("hello world"))
                 .to_owned(),
-            uid: unsafe { u32::from(geteuid()) },
+            uid: u32::from(geteuid()),
         };
 
         let msg = Message {
@@ -423,7 +426,7 @@ fn main() {
                 .get_one::<String>("name")
                 .unwrap_or(&String::from("lost"))
                 .to_string(),
-            uid: unsafe { u32::from(geteuid()) },
+            uid: u32::from(geteuid()),
         };
 
         let msg = Message {
