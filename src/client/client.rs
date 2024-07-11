@@ -2,14 +2,14 @@ mod cli;
 mod log;
 use {
     cli::build_cli, dusa_common::{
-        get_id, prefix::{receive_message, send_message}, set_file_ownership, DecryptResponseData, ErrorCode, Message, MessageType, RequestPayload, RequestRecsPlainText, RequestRecsSimple, RequestRecsWrite, ResponseData, SOCKET_PATH, VERSION
-    }, log::log, nix::unistd::{chown, geteuid, Gid, Uid}, pretty::{halt, pass, warn}, serde_json::{json, Value}, std::{
-        fmt::format, fs, io::{Read, Write}, os::unix::net::UnixStream, path::PathBuf, process::exit, thread, time::Duration
+        get_id, prefix::{receive_message, send_message}, set_file_ownership, DecryptResponseData, Message, MessageType, RequestPayload, RequestRecsPlainText, RequestRecsSimple, RequestRecsWrite, SOCKET_PATH, VERSION
+    }, nix::unistd::{geteuid}, pretty::{halt, pass, warn}, std::{
+        fs, os::unix::net::UnixStream, path::PathBuf, process::exit, time::Duration
     }, system::{
         errors::{
             ErrorArray, ErrorArrayItem, OkWarning, UnifiedResult as uf, WarningArray,
             WarningArrayItem,
-        }, functions::del_file, types::PathType
+        }, types::PathType
     }
 };
 
