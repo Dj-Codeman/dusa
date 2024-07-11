@@ -1,8 +1,8 @@
 pub mod prefix;
 
-use std::{fs, os::unix::fs::PermissionsExt, time::Duration};
+use std::{fs, os::unix::fs::PermissionsExt, path::PathBuf, time::Duration};
 
-use nix::unistd::{Gid, Uid};
+use nix::unistd::{chown, Gid, Uid};
 use pretty::halt;
 use serde::{Deserialize, Serialize};
 use system::{
@@ -17,6 +17,8 @@ use users::{Groups, Users, UsersCache};
 
 /// Current version of the protocol, derived from the package version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Time to live in seconds for file that are decrypted.
+pub const TTL: u64 = 5;
 
 /// Getting the current uid
 pub fn get_id() -> (Uid, Gid) {
@@ -60,7 +62,7 @@ pub struct ResponseData {
     pub detail: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DecryptResponseData{
     pub temp_p: PathType,
     pub orig_p: PathType,
@@ -221,6 +223,19 @@ pub fn SOCKET_PATH(
         data: socket_file,
         warning: warnings,
     }))
+}
+
+pub fn set_file_ownership(path: &PathBuf, uid: Uid, gid: Gid, mut errors: ErrorArray) -> uf<()> {
+    match chown(path, Some(uid), Some(gid)) {
+        Ok(_) => uf::new(Ok(())),
+        Err(_) => {
+            errors.push(ErrorArrayItem::new(
+                system::errors::Errors::Unauthorized,
+                String::from("chown failed"),
+            ));
+            uf::new(Err(errors))
+        }
+    }
 }
 
 pub fn set_socket_permission(socket_path: PathType) {

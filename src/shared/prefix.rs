@@ -26,20 +26,15 @@ pub fn send_message<T: Serialize>(stream: &mut UnixStream, message: &T, mut erro
     let length_bytes = length.to_be_bytes(); // Convert length to big-endian bytes
 
     // Send length prefix followed by the message
-    match stream.write_all(&length_bytes) {
-        Ok(_) => (),
-        Err(e) => {
-            errors.push(ErrorArrayItem::from(e));
-            return UnifiedResult::new(Err(errors))
-        },
-    };
-    match stream.write_all(&message_bytes) {
-        Ok(_) => (),
-        Err(e) => {
-            errors.push(ErrorArrayItem::from(e));
-            return UnifiedResult::new(Err(errors))
-        },
-    };
+    if let Err(err) = stream.write_all(&length_bytes) {
+        errors.push(ErrorArrayItem::from(err));
+        return UnifiedResult::new(Err(errors))
+    }
+
+    if let Err(err) = stream.write_all(&message_bytes) {
+        errors.push(ErrorArrayItem::from(err));
+        return UnifiedResult::new(Err(errors))
+    }
 
     return UnifiedResult::new(Ok(()))
 }
@@ -47,23 +42,20 @@ pub fn send_message<T: Serialize>(stream: &mut UnixStream, message: &T, mut erro
 /// Reads a length-prefixed message from the stream and decodes it.
 pub fn receive_message(stream: &mut UnixStream, mut errors: ErrorArray) -> UnifiedResult<GeneralMessage> {
     let mut length_bytes = [0u8; 4];
-    match stream.read_exact(&mut length_bytes){
-        Ok(_) => (),
-        Err(e) => {
-            errors.push(ErrorArrayItem::from(e));
-            return UnifiedResult::new(Err(errors))
-        },
-    }; // Read the length prefix
+
+    if let Err(err) = stream.read_exact(&mut length_bytes) {
+        errors.push(ErrorArrayItem::from(err));
+        return UnifiedResult::new(Err(errors))
+    }; // get the length
+
     let length = u32::from_be_bytes(length_bytes) as usize;
 
     let mut message_bytes = vec![0u8; length];
-    match stream.read_exact(&mut message_bytes){
-        Ok(_) => (),
-        Err(e) => {
-            errors.push(ErrorArrayItem::from(e));
-            return UnifiedResult::new(Err(errors))
-        },
-    }; // Read the message
+
+    if let Err(err) = stream.read_exact(&mut message_bytes) {
+        errors.push(ErrorArrayItem::from(err));
+        return UnifiedResult::new(Err(errors))
+    } // Read the message
 
     let message = match serde_json::from_slice(&message_bytes) {
         Ok(d) => d,

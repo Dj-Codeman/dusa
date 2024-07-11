@@ -1,32 +1,17 @@
 pub mod response_err;
 
 use dusa_common::{
-    check_version, get_id,
-    prefix::{receive_message, send_message, GeneralMessage},
-    set_socket_permission, DecryptResponseData, DusaError, ErrorCode, Message, MessageType,
-    RequestPayload, RequestRecsSimple, ResponseData, SOCKET_PATH, VERSION,
+    check_version, get_id, prefix::{receive_message, send_message, GeneralMessage}, set_file_ownership, set_socket_permission, DecryptResponseData, DusaError, ErrorCode, Message, MessageType, RequestPayload, RequestRecsSimple, SOCKET_PATH, TTL, VERSION
 };
-use nix::{
-    unistd::{setgid, setuid},
-};
-use pretty::{halt, notice, output, warn};
+use nix::unistd::{setgid, setuid};
+use pretty::{halt, notice, output};
 use recs::{decrypt_raw, encrypt_raw, initialize, remove, retrieve, store};
-use response_err::{acknowledge, internal_error};
-use serde::de::value::Error;
 use serde_json::json;
 use std::{
-    fmt::format,
-    io::{Read, Write},
-    net::Shutdown,
-    os::unix::net::{UnixListener, UnixStream},
-    str::from_utf8,
-    thread::{self, Thread},
-    time::Duration,
+    os::unix::net::{UnixListener, UnixStream}, thread::{self}, time::Duration
 };
 use system::{
-    errors::{ErrorArray, ErrorArrayItem, UnifiedResult, WarningArray},
-    functions::del_file,
-    types::{ClonePath, PathType},
+    errors::{ErrorArray, ErrorArrayItem, WarningArray}, functions::del_file, types::{ClonePath, PathType}
 };
 
 fn main() {
@@ -41,9 +26,10 @@ fn main() {
         _ => halt("We aren't running as the correct user, peacing out .."),
     };
 
+    pub const PROGNAME: &str = "dusa";
     // Initializing recs
     recs::set_debug(false);
-    recs::set_prog("dusa");
+    recs::set_prog(PROGNAME);
 
     if let Err(mut err) = initialize(e1.clone(), w1.clone()).uf_unwrap() {
         err.push(ErrorArrayItem::new(
@@ -99,7 +85,7 @@ fn handle_client(mut stream: UnixStream, errors: ErrorArray, warnings: WarningAr
         Ok(d) => d,
         Err(e) => {
             e.display(false);
-            unreachable!()
+            return
         }
     };
 
@@ -167,6 +153,7 @@ fn handle_client(mut stream: UnixStream, errors: ErrorArray, warnings: WarningAr
                             {
                                 err.display(false)
                             }
+                            output("GREEN", "done");
                         }
                         Err(e) => {
                             e.display(false);
@@ -183,6 +170,20 @@ fn handle_client(mut stream: UnixStream, errors: ErrorArray, warnings: WarningAr
                             }
                         }
                     }
+
+                    // Send an ACK message
+                    send_message(
+                        &mut stream,
+                        &Message {
+                            version: VERSION.to_owned(),
+                            msg_type: MessageType::Acknowledge,
+                            payload: serde_json::json!({}),
+                            error: None,
+                        },
+                        errors.clone(),
+                    );
+
+                    return
                 }
                 RequestPayload::PlainText(req) => {
                     let command = req.command;
@@ -306,16 +307,17 @@ fn handle_client(mut stream: UnixStream, errors: ErrorArray, warnings: WarningAr
                             {
                                 Ok(d) => {
                                     let data = d.data;
-                                    d.warning.display();
-                                    let temp_path = data.0;
-                                    let original_path = data.1;
+                                    let temp_p = data.0.clone();
+                                    let temp_p_clone = data.0.clone();
+                                    let orig_p = data.1;
                                     // The temp path will be deleted after the ttl time
-                                    let ttl = Duration::from_secs(120);
+                                    let ttl = Duration::from_secs(TTL);
                                     let decrypt_response = DecryptResponseData {
-                                        temp_p: temp_path.clone(),
-                                        orig_p: original_path,
+                                        temp_p,
+                                        orig_p,
                                         ttl,
                                     };
+                                    d.warning.display();
 
                                     let response = Message {
                                         version: VERSION.to_owned(),
@@ -324,26 +326,36 @@ fn handle_client(mut stream: UnixStream, errors: ErrorArray, warnings: WarningAr
                                         error: None,
                                     };
 
-                                    thread::spawn(move || {
-                                        thread::sleep(ttl);
-                                        match del_file(
-                                            temp_path,
-                                            ErrorArray::new_container(),
-                                            warnings,
-                                        )
-                                        .uf_unwrap()
-                                        {
-                                            Ok(_) => notice("Cleaning temp files"),
-                                            Err(e) => e.display(false),
-                                        }
-                                    });
-
                                     if let Err(err) =
                                         send_message(&mut stream, &response, errors.clone())
                                             .uf_unwrap()
                                     {
                                         err.display(false)
                                     }
+
+                                    thread::spawn(move || {
+                                        thread::sleep(Duration::from_secs(TTL));
+                                        // taking back ownership
+                                        let (uid, gid) = get_id();
+                                        if let Err(err) = set_file_ownership(&temp_p_clone.to_path_buf(), uid, gid, ErrorArray::new_container()).uf_unwrap() {
+                                            err.display(false);
+                                            return
+                                        }
+                                        match del_file(
+                                            temp_p_clone,
+                                            ErrorArray::new_container(),
+                                            WarningArray::new_container(),
+                                        )
+                                        .uf_unwrap()
+                                        {
+                                            Ok(_) => notice("Cleaning up temp files"),
+                                            Err(e) => {
+                                                e.display(false)
+                                            },
+                                        }
+                                    });
+
+
                                 }
                                 Err(e) => {
                                     let response = Message {
@@ -373,8 +385,12 @@ fn handle_client(mut stream: UnixStream, errors: ErrorArray, warnings: WarningAr
                                         payload: serde_json::json!({"value":"Ok"}),
                                         error: None,
                                     };
-                                    send_message(&mut stream, &ack, errors.clone());
-                                }
+                                    if let Err(err) =
+                                        send_message(&mut stream, &ack, errors.clone())
+                                            .uf_unwrap()
+                                    {
+                                        err.display(false)
+                                    }                                }
                                 Err(e) => {
                                     let response = Message {
                                         version: VERSION.to_owned(),

@@ -1130,7 +1130,7 @@ dependencies = [
 [[package]]
 name = "recs"
 version = "2.5.1"
-source = "git+https://github.com/Dj-Codeman/recs.git?branch=soon_stable#dfce80840320dbfc56f827ef921efe968cb77ec3"
+source = "git+https://github.com/Dj-Codeman/recs.git?branch=soon_stable#435eca63dddd28280e34391087cb7c0391f3231d"
 dependencies = [
  "aes",
  "base64 0.21.7",
@@ -1481,6 +1481,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "clap_mangen",
+ "logging",
  "nix 0.20.2",
  "pretty",
  "recs",
@@ -1678,7 +1679,7 @@ dependencies = [
 [[package]]
 name = "system"
 version = "2.3.0"
-source = "git+https://github.com/Dj-Codeman/system.git#d7f6ed1e0db24484fe1ff4d3400f76764dc53fd2"
+source = "git+https://github.com/Dj-Codeman/system.git#3bfba2b8e32c46502d1b0b814922084f1293a84d"
 dependencies = [
  "block-modes",
  "cfg_rust_features",

@@ -1,30 +1,16 @@
 mod cli;
+mod log;
 use {
-    cli::build_cli,
-    dusa_common::{
-        get_id,
-        prefix::{receive_message, send_message},
-        DecryptResponseData, ErrorCode, Message, MessageType, RequestPayload, RequestRecsPlainText,
-        RequestRecsSimple, RequestRecsWrite, ResponseData, SOCKET_PATH, VERSION,
-    },
-    nix::unistd::{chown, geteuid, Gid, Uid},
-    pretty::{halt, pass, warn},
-    serde_json::{json, Value},
-    std::{
-        fmt::format,
-        io::{Read, Write},
-        os::unix::net::UnixStream,
-        path::PathBuf,
-        process::exit,
-        time::Duration,
-    },
-    system::{
+    cli::build_cli, dusa_common::{
+        get_id, prefix::{receive_message, send_message}, set_file_ownership, DecryptResponseData, ErrorCode, Message, MessageType, RequestPayload, RequestRecsPlainText, RequestRecsSimple, RequestRecsWrite, ResponseData, SOCKET_PATH, VERSION
+    }, log::log, nix::unistd::{chown, geteuid, Gid, Uid}, pretty::{halt, pass, warn}, serde_json::{json, Value}, std::{
+        fmt::format, fs, io::{Read, Write}, os::unix::net::UnixStream, path::PathBuf, process::exit, thread, time::Duration
+    }, system::{
         errors::{
             ErrorArray, ErrorArrayItem, OkWarning, UnifiedResult as uf, WarningArray,
             WarningArrayItem,
-        },
-        types::PathType,
-    },
+        }, functions::del_file, types::PathType
+    }
 };
 
 type Callback =
@@ -44,8 +30,6 @@ fn main() {
             unreachable!()
         }
     };
-
-    let mut stream = UnixStream::connect(socket_path.clone()).unwrap();
 
     // clapping
     let cmd: clap::ArgMatches = build_cli().get_matches();
@@ -77,6 +61,14 @@ fn main() {
         _ => ProgramMode::Invalid,
     };
 
+    let stream: UnixStream = match UnixStream::connect(socket_path.clone()) {
+        Ok(d) => d,
+        Err(_) => {
+            halt("The server is not running or You do not have access to this application");
+            unreachable!()
+        },
+    };
+
     let result: uf<OkWarning<Option<String>>> = match mode {
         ProgramMode::StoreFile(callback) => callback(cmd, stream, w1.clone(), e1.clone()),
         ProgramMode::RetrieveFile(callback) => callback(cmd, stream, w1.clone(), e1.clone()),
@@ -84,14 +76,15 @@ fn main() {
         ProgramMode::DecryptText(callback) => callback(cmd, stream, w1.clone(), e1.clone()),
         ProgramMode::RemoveFile(callback) => callback(cmd, stream, w1.clone(), e1.clone()),
         ProgramMode::Invalid => {
-            warn("Error: Parsing arguments failed.");
-            exit(1)
-        }
-        _ => {
-            warn("Error: Parsing arguments failed.");
+            warn("Invalid command given use '-h' or '--help' for more info");
             exit(1)
         }
     };
+
+    match result.uf_unwrap() {
+        Ok(d) => d.warning.display(),
+        Err(e) => e.display(false),
+    }
 
     fn encrypt_file(
         cmd: clap::ArgMatches,
@@ -116,7 +109,9 @@ fn main() {
 
         // Changing owner ship of the file
         let (uid, gid) = get_id();
-        set_file_ownership(&file_path.to_path_buf(), uid, gid, errors.clone()).unwrap();
+        if let Err(err) = set_file_ownership(&file_path.to_path_buf(), uid, gid, errors.clone()).uf_unwrap() {
+            return uf::new(Err(err))
+        }
 
         // Creating the command to send
         let request_data = RequestRecsWrite {
@@ -129,7 +124,7 @@ fn main() {
                 .get_one::<String>("name")
                 .unwrap_or(&String::from("lost"))
                 .to_string(),
-            uid: unsafe { u32::from(geteuid()) },
+            uid: u32::from(geteuid()),
         };
 
         let msg = Message {
@@ -140,7 +135,9 @@ fn main() {
         };
 
         // Communicating with server
-        let _ = send_message(&mut stream, &msg, errors.clone());
+        if let Err(err) = send_message(&mut stream, &msg, errors.clone()).uf_unwrap() {
+            return uf::new(Err(err))
+        }
         std::thread::sleep(Duration::from_nanos(100));
         let response = receive_message(&mut stream, errors.clone()).unwrap();
 
@@ -151,20 +148,14 @@ fn main() {
                     .get("Ok")
                     .and_then(|v| v.as_str().map(|s| s.to_string()));
 
-                // Send an ACK message
-                let ack = Message {
-                    version: VERSION.to_owned(),
-                    msg_type: MessageType::Acknowledge,
-                    payload: serde_json::json!({}),
-                    error: None,
-                };
-                send_message(&mut stream, &ack, errors.clone());
-                let _ = receive_message(&mut stream, errors.clone()).unwrap();
+                // ping the file from the server 
+
+                // delete the original file
 
                 pass(&format!("{}", msg.unwrap()));
             }
             MessageType::ErrorResponse => {
-                halt(&format!("{}", response.payload));
+                halt(&format!("We received the following error: {}", response.payload));
             }
             _ => {
                 let msg = String::from("Server responded in an unexpected way, ignoring ...");
@@ -185,7 +176,7 @@ fn main() {
         cmd: clap::ArgMatches,
         mut stream: UnixStream,
         mut warnings: WarningArray,
-        errors: ErrorArray,
+        mut errors: ErrorArray,
     ) -> uf<OkWarning<Option<String>>> {
         let request_data = RequestRecsSimple {
             command: dusa_common::Commands::DecryptFile,
@@ -197,8 +188,10 @@ fn main() {
                 .get_one::<String>("name")
                 .unwrap_or(&String::from("lost"))
                 .to_string(),
-            uid: unsafe { u32::from(geteuid()) },
+            uid: u32::from(geteuid()),
         };
+
+        println!("{:?}", &request_data);
 
         let msg = Message {
             version: VERSION.to_owned(),
@@ -208,8 +201,13 @@ fn main() {
         };
 
         // Communicating with server
-        let _ = send_message(&mut stream, &msg, errors.clone());
-        std::thread::sleep(Duration::from_nanos(100));
+        if let Err(err) =
+        send_message(&mut stream, &msg, errors.clone())
+            .uf_unwrap()
+    {
+        err.display(false)
+    }
+        // std::thread::sleep(Duration::from_nanos(100));
         let response = receive_message(&mut stream, errors.clone()).unwrap();
 
         match response.msg_type {
@@ -218,20 +216,24 @@ fn main() {
                 let data = DecryptResponseData {
                     temp_p: response_data
                         .get("temp_p")
+                        .and_then(|v| v.get("Content"))
                         .and_then(|v| v.as_str())
-                        .map(|s| PathType::Str(s.into()))
-                        .unwrap_or(PathType::Str("/tmp/null".into())),
+                        .map(|s| PathType::Content(s.to_string()))
+                        .unwrap_or_else(|| PathType::Content("/tmp/null".to_string())),                
                     orig_p: response_data
                         .get("orig_p")
+                        .and_then(|v| v.get("PathBuf"))
                         .and_then(|v| v.as_str())
-                        .map(|s| PathType::Str(s.into()))
-                        .unwrap_or(PathType::Str("/tmp/null".into())),
+                        .map(|s| PathType::Content(s.to_string()))
+                        .unwrap_or_else(|| PathType::Content("/tmp/null".to_string())),  
                     ttl: response_data
                         .get("ttl")
+                        .and_then(|v| v.get("secs"))
                         .and_then(|v| v.as_u64())
-                        .map(|ttl| Duration::from_secs(ttl))
-                        .unwrap_or(Duration::from_secs(0)),
+                        .map(|t| Duration::from_secs(t))
+                        .unwrap_or(Duration::from_secs(5)), // keep the timing tight
                 };
+                let data_cloned = data.clone();
 
                 // Send an ACK message
                 let ack = Message {
@@ -243,7 +245,17 @@ fn main() {
                 send_message(&mut stream, &ack, errors.clone());
                 let _ = receive_message(&mut stream, errors.clone()).unwrap();
 
-                pass(&format!("{:#?}", data));
+                // copy the file to the original path
+                match fs::copy(data.temp_p, data.orig_p) {
+                    Ok(d) => if d != 0 {
+                        pass(&format!("{:#?}", data_cloned));
+                    },
+                    Err(e) => {
+                        errors.push(ErrorArrayItem::from(e));
+                        errors.display(true);
+                        unreachable!()
+                    },
+                }
             }
             MessageType::ErrorResponse => {
                 halt(&format!("{}", response.payload));
@@ -465,19 +477,6 @@ fn main() {
         }));
     }
 
-    fn set_file_ownership(path: &PathBuf, uid: Uid, gid: Gid, mut errors: ErrorArray) -> uf<()> {
-        match chown(path, Some(uid), Some(gid)) {
-            Ok(_) => uf::new(Ok(())),
-            Err(_) => {
-                errors.push(ErrorArrayItem::new(
-                    system::errors::Errors::Unauthorized,
-                    String::from("chown failed"),
-                ));
-                uf::new(Err(errors))
-            }
-        }
-    }
-
     fn get_file_path(
         mut errors: ErrorArray,
         _warnings: WarningArray,
@@ -611,4 +610,5 @@ fn main() {
     // if server_ack.msg_type == MessageType::Acknowledge {
     //     println!("Received ACK from server, closing connection.");
     // }
+
 }
