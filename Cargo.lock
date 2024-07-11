@@ -387,6 +387,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "212d0f5754cb6769937f4501cc0e67f4f4483c8d2c3e1e922ee9edbe4ab4c7c0"
 
 [[package]]
+name = "dusa"
+version = "1.2.1"
+dependencies = [
+ "clap",
+ "clap_complete",
+ "clap_mangen",
+ "logging",
+ "nix 0.20.2",
+ "pretty",
+ "recs",
+ "serde",
+ "serde_json",
+ "system",
+ "users",
+]
+
+[[package]]
 name = "either"
 version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1472,23 +1489,6 @@ dependencies = [
  "ryu",
  "serde",
  "unsafe-libyaml",
-]
-
-[[package]]
-name = "server"
-version = "1.2.1"
-dependencies = [
- "clap",
- "clap_complete",
- "clap_mangen",
- "logging",
- "nix 0.20.2",
- "pretty",
- "recs",
- "serde",
- "serde_json",
- "system",
- "users",
 ]
 
 [[package]]
