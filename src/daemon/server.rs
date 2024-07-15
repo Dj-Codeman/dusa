@@ -4,14 +4,14 @@ use dusa_common::{
     check_version, get_id, prefix::{receive_message, send_message, GeneralMessage}, set_file_ownership, set_socket_permission, DecryptResponseData, DusaError, ErrorCode, Message, MessageType, RequestPayload, RequestRecsSimple, SOCKET_PATH, TTL, VERSION
 };
 use nix::unistd::{setgid, setuid};
-use pretty::{halt, notice, output};
+use simple_pretty::{halt, notice, output};
 use recs::{decrypt_raw, encrypt_raw, initialize, remove, retrieve, store};
 use serde_json::json;
 use std::{
     os::unix::net::{UnixListener, UnixStream}, thread::{self}, time::Duration
 };
-use system::{
-    errors::{ErrorArray, ErrorArrayItem, WarningArray}, functions::del_file, types::{ClonePath, PathType}
+use dusa_collection_utils::{
+    errors::{ErrorArray, ErrorArrayItem, Errors, WarningArray}, functions::del_file, types::{ClonePath, PathType}
 };
 
 fn main() {
@@ -33,7 +33,7 @@ fn main() {
 
     if let Err(mut err) = initialize(e1.clone(), w1.clone()).uf_unwrap() {
         err.push(ErrorArrayItem::new(
-            system::errors::Errors::GeneralError,
+            Errors::GeneralError,
             "Recs failed to initialize".to_string(),
         ));
         err.display(true);

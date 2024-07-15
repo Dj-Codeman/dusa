@@ -388,19 +388,43 @@ checksum = "212d0f5754cb6769937f4501cc0e67f4f4483c8d2c3e1e922ee9edbe4ab4c7c0"
 
 [[package]]
 name = "dusa"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "clap",
  "clap_complete",
  "clap_mangen",
- "logging",
- "nix 0.20.2",
- "pretty",
- "recs",
+ "dusa_collection_utils",
+ "nix",
+ "recs_lib",
  "serde",
  "serde_json",
- "system",
+ "simple_pretty",
+ "simple_tmp_logger",
  "users",
+]
+
+[[package]]
+name = "dusa_collection_utils"
+version = "2.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48a88df3b0623ec879aac5787b5a1e166ccc8851d3c96353b4f44666ddbd6fc4"
+dependencies = [
+ "block-modes",
+ "cfg_rust_features",
+ "flate2",
+ "hex",
+ "nix",
+ "rand",
+ "regex",
+ "reqwest",
+ "rustversion",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2",
+ "simple_pretty",
+ "tar",
+ "walkdir",
 ]
 
 [[package]]
@@ -830,16 +854,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
 
 [[package]]
-name = "logging"
-version = "1.0.0"
-source = "git+https://github.com/Dj-Codeman/logger.git#87f11f8307efb813b047e290c244a5749e67c309"
-dependencies = [
- "chrono",
- "system",
- "time",
-]
-
-[[package]]
 name = "memchr"
 version = "2.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -902,19 +916,6 @@ name = "nix"
 version = "0.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f5e06129fb611568ef4e868c14b326274959aa70ff7776e9d55323531c374945"
-dependencies = [
- "bitflags 1.2.1",
- "cc",
- "cfg-if",
- "libc 0.2.155",
- "memoffset",
-]
-
-[[package]]
-name = "nix"
-version = "0.23.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f3790c00a0150112de0f4cd161e3d7fc4b2d8a5542ffc35f099a2562aecb35c"
 dependencies = [
  "bitflags 1.2.1",
  "cc",
@@ -1057,11 +1058,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b40af805b3121feab8a3c29f04d8ad262fa8e0561883e7653e024ae4479e6de"
 
 [[package]]
-name = "pretty"
-version = "0.1.0"
-source = "git+https://github.com/Dj-Codeman/pretty.git#45be7d2c78df0b95b3a460ce17e906d157af6f4d"
-
-[[package]]
 name = "proc-macro-hack"
 version = "0.5.20+deprecated"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1145,20 +1141,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "recs"
-version = "2.5.1"
-source = "git+https://github.com/Dj-Codeman/recs.git#435eca63dddd28280e34391087cb7c0391f3231d"
+name = "recs_lib"
+version = "2.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1991badb2fea530a819039341435de9b608caa9abcec91eff2a99a822bc27d8b"
 dependencies = [
  "aes",
  "base64 0.21.7",
  "block-modes",
+ "dusa_collection_utils",
  "hex",
  "hmac",
  "lazy_static",
- "logging",
- "nix 0.23.2",
+ "nix",
  "once_cell",
- "pretty",
  "rand",
  "rand_core",
  "random-string",
@@ -1167,9 +1163,10 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "simple_pretty",
+ "simple_tmp_logger",
  "substring",
  "sysinfo",
- "system",
 ]
 
 [[package]]
@@ -1518,6 +1515,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "simple_pretty"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0de9b42ebd00f4ef746f11458c5d147c4a2ca81cdd6aa4e5315a89590464a799"
+
+[[package]]
+name = "simple_tmp_logger"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "051ba9a885819592ae0775da7795026c52804c1b0ca7dd127dab77be9db70a3b"
+dependencies = [
+ "chrono",
+ "dusa_collection_utils",
+ "time",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1674,29 +1688,6 @@ dependencies = [
  "once_cell",
  "rayon",
  "winapi",
-]
-
-[[package]]
-name = "system"
-version = "2.3.0"
-source = "git+https://github.com/Dj-Codeman/system.git#3bfba2b8e32c46502d1b0b814922084f1293a84d"
-dependencies = [
- "block-modes",
- "cfg_rust_features",
- "flate2",
- "hex",
- "nix 0.23.2",
- "pretty",
- "rand",
- "regex",
- "reqwest",
- "rustversion",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2",
- "tar",
- "walkdir",
 ]
 
 [[package]]

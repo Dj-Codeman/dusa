@@ -1,7 +1,7 @@
 use std::os::unix::net::UnixStream;
 
 use dusa_common::{prefix::{send_message, GeneralMessage}, DusaError, ErrorCode, MessageType, VERSION};
-use system::errors::{ErrorArray, UnifiedResult};
+use dusa_collection_utils::errors::{ErrorArray, UnifiedResult};
 
 pub fn internal_error(err: &str) -> GeneralMessage {
     let error = DusaError {

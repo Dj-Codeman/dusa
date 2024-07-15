@@ -3,9 +3,9 @@ pub mod prefix;
 use std::{fs, os::unix::fs::PermissionsExt, path::PathBuf, time::Duration};
 
 use nix::unistd::{chown, Gid, Uid};
-use pretty::halt;
+use simple_pretty::halt;
 use serde::{Deserialize, Serialize};
-use system::{
+use dusa_collection_utils::{
     errors::{
         ErrorArray, ErrorArrayItem, Errors as SE, OkWarning, UnifiedResult as uf, WarningArray,
         WarningArrayItem, Warnings,
@@ -230,7 +230,7 @@ pub fn set_file_ownership(path: &PathBuf, uid: Uid, gid: Gid, mut errors: ErrorA
         Ok(_) => uf::new(Ok(())),
         Err(_) => {
             errors.push(ErrorArrayItem::new(
-                system::errors::Errors::Unauthorized,
+                dusa_collection_utils::errors::Errors::Unauthorized,
                 String::from("chown failed"),
             ));
             uf::new(Err(errors))

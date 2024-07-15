@@ -1,15 +1,14 @@
 mod cli;
 mod log;
 use {
-    cli::build_cli, dusa_common::{
-        get_id, prefix::{receive_message, send_message}, set_file_ownership, DecryptResponseData, Message, MessageType, RequestPayload, RequestRecsPlainText, RequestRecsSimple, RequestRecsWrite, SOCKET_PATH, VERSION
-    }, nix::unistd::geteuid, pretty::{halt, pass, warn}, std::{
-        fs, os::unix::net::UnixStream, path::PathBuf, process::exit, time::Duration
-    }, system::{
+    cli::build_cli, dusa_collection_utils::{
         errors::{
-            ErrorArray, ErrorArrayItem, OkWarning, UnifiedResult as uf, WarningArray,
-            WarningArrayItem,
+            ErrorArray, ErrorArrayItem, Errors, OkWarning, UnifiedResult as uf, WarningArray, WarningArrayItem, Warnings
         }, types::PathType
+    }, dusa_common::{
+        get_id, prefix::{receive_message, send_message}, set_file_ownership, DecryptResponseData, Message, MessageType, RequestPayload, RequestRecsPlainText, RequestRecsSimple, RequestRecsWrite, SOCKET_PATH, VERSION
+    }, nix::unistd::geteuid, simple_pretty::{halt, pass, warn}, std::{
+        fs, os::unix::net::UnixStream, path::PathBuf, process::exit, time::Duration
     }
 };
 
@@ -163,7 +162,7 @@ fn main() {
             _ => {
                 let msg = String::from("Server responded in an unexpected way, ignoring ...");
                 warnings.push(WarningArrayItem::new_details(
-                    system::errors::Warnings::Warning,
+                    Warnings::Warning,
                     msg,
                 ))
             }
@@ -266,7 +265,7 @@ fn main() {
             _ => {
                 let msg = String::from("Server responded in an unexpected way, ignoring ...");
                 warnings.push(WarningArrayItem::new_details(
-                    system::errors::Warnings::Warning,
+                    Warnings::Warning,
                     msg,
                 ))
             }
@@ -332,7 +331,7 @@ fn main() {
             _ => {
                 let msg = String::from("Server responded in an unexpected way, ignoring ...");
                 warnings.push(WarningArrayItem::new_details(
-                    system::errors::Warnings::Warning,
+                    Warnings::Warning,
                     msg,
                 ))
             }
@@ -398,7 +397,7 @@ fn main() {
             _ => {
                 let msg = String::from("Server responded in an unexpected way, ignoring ...");
                 warnings.push(WarningArrayItem::new_details(
-                    system::errors::Warnings::Warning,
+                    Warnings::Warning,
                     msg,
                 ))
             }
@@ -468,7 +467,7 @@ fn main() {
             _ => {
                 let msg = String::from("Server responded in an unexpected way, ignoring ...");
                 warnings.push(WarningArrayItem::new_details(
-                    system::errors::Warnings::Warning,
+                    Warnings::Warning,
                     msg,
                 ))
             }
@@ -496,7 +495,7 @@ fn main() {
                 }
                 Err(err) => ErrorArrayItem::from(err),
             },
-            None => ErrorArrayItem::new(system::errors::Errors::InvalidFile, "".to_owned()),
+            None => ErrorArrayItem::new(Errors::InvalidFile, "".to_owned()),
         };
         errors.push(err);
         return uf::new(Err(errors));

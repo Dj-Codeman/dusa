@@ -1,7 +1,7 @@
 use std::{io::{Read, Write}, os::unix::net::UnixStream};
 
 use serde::{Deserialize, Serialize};
-use system::errors::{ErrorArray, ErrorArrayItem, UnifiedResult};
+use dusa_collection_utils::errors::{ErrorArray, ErrorArrayItem, UnifiedResult};
 
 use crate::{DusaError, MessageType};
 
