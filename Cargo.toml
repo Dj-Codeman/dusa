@@ -3,6 +3,7 @@ name = "dusa"
 version = "1.2.2"
 edition = "2021"
 license = "MIT"
+description = "A client and server model application for encrypting files and texted based on recs_lib"
 
 [dependencies]
 clap = { version = "4.4", features = ["wrap_help", "cargo"] }
