@@ -1,6 +1,6 @@
 [package]
 name = "dusa"
-version = "1.2.2"
+version = "1.2.3"
 edition = "2021"
 license = "MIT"
 description = "A client and server model application for encrypting files and texted based on recs_lib"
@@ -15,7 +15,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 simple_pretty = "0.1.0"
 recs_lib = "2.5.2"
-simple_tmp_logger = "1.2.1"
+simple_tmp_logger = "1.2.3"
 nix = "0.20"
 users = "0.9.0"
 
