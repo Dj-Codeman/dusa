@@ -962,9 +962,9 @@ dependencies = [
 
 [[package]]
 name = "object"
-version = "0.36.1"
+version = "0.36.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "081b846d1d56ddfc18fdf1a922e4f6e07a11768ea1b92dec44e42b72712ccfce"
+checksum = "3f203fa8daa7bb185f760ae12bd8e097f63d17041dcdcaf675ac54cdf863170e"
 dependencies = [
  "memchr",
 ]
@@ -1587,9 +1587,9 @@ checksum = "0de9b42ebd00f4ef746f11458c5d147c4a2ca81cdd6aa4e5315a89590464a799"
 
 [[package]]
 name = "simple_tmp_logger"
-version = "1.2.3"
+version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c176f8176e67d49784028f5aca1b7bd2d526698194617d791360079b14469d0"
+checksum = "3bb5f8cbd514870efa7ce59134ad2cc91e487315e930829a55d20a54bce61bf5"
 dependencies = [
  "chrono",
  "dusa_collection_utils",
