@@ -233,10 +233,10 @@ fn handle_client(mut stream: UnixStream, mut errors: ErrorArray, warnings: Warni
                             }
                         }
                         dusa_common::Commands::DecryptRawText => {
-                            let recs_check: &str = truncate(&data, 6);
+                            let recs_check: &str = truncate(&data, 10);
                             let mut error_vec: ErrorArray = errors.clone();
 
-                            if recs_check != "30312d" {
+                            if recs_check.contains("30312d") {
                                 errors.push(ErrorArrayItem::new(
                                     Errors::InvalidBlockData,
                                     format!("The data given is not a valid recs sequence {}", data),
