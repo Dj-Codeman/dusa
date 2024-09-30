@@ -1,17 +1,24 @@
 pub mod response_err;
 
+use dusa_collection_utils::{
+    errors::{ErrorArray, ErrorArrayItem, Errors, WarningArray},
+    functions::{del_file, truncate},
+    types::{ClonePath, PathType},
+};
 use dusa_common::{
-    check_version, get_id, prefix::{receive_message, send_message, GeneralMessage}, set_file_ownership, set_socket_permission, DecryptResponseData, DusaError, ErrorCode, Message, MessageType, RequestPayload, RequestRecsSimple, SOCKET_PATH, TTL, VERSION
+    check_version, get_id,
+    prefix::{receive_message, send_message, GeneralMessage},
+    set_file_ownership, set_socket_permission, DecryptResponseData, DusaError, ErrorCode, Message,
+    MessageType, RequestPayload, RequestRecsSimple, SOCKET_PATH, TTL, VERSION,
 };
 use nix::unistd::{setgid, setuid};
-use simple_pretty::{halt, notice, output};
 use recs::{decrypt_raw, encrypt_raw, initialize, remove, retrieve, store};
 use serde_json::json;
+use simple_pretty::{halt, notice, output};
 use std::{
-    os::unix::net::{UnixListener, UnixStream}, thread::{self}, time::Duration
-};
-use dusa_collection_utils::{
-    errors::{ErrorArray, ErrorArrayItem, Errors, WarningArray}, functions::del_file, types::{ClonePath, PathType}
+    os::unix::net::{UnixListener, UnixStream},
+    thread::{self},
+    time::Duration,
 };
 
 fn main() {
@@ -79,13 +86,13 @@ fn main() {
 }
 
 #[allow(unreachable_patterns)]
-fn handle_client(mut stream: UnixStream, errors: ErrorArray, warnings: WarningArray) {
+fn handle_client(mut stream: UnixStream, mut errors: ErrorArray, warnings: WarningArray) {
     let new_message: GeneralMessage = match receive_message(&mut stream, errors.clone()).uf_unwrap()
     {
         Ok(d) => d,
         Err(e) => {
             e.display(false);
-            return
+            return;
         }
     };
 
@@ -183,7 +190,7 @@ fn handle_client(mut stream: UnixStream, errors: ErrorArray, warnings: WarningAr
                         errors.clone(),
                     );
 
-                    return
+                    return;
                 }
                 RequestPayload::PlainText(req) => {
                     let command = req.command;
@@ -226,6 +233,32 @@ fn handle_client(mut stream: UnixStream, errors: ErrorArray, warnings: WarningAr
                             }
                         }
                         dusa_common::Commands::DecryptRawText => {
+                            let recs_check: &str = truncate(&data, 6);
+                            let mut error_vec: ErrorArray = errors.clone();
+
+                            if recs_check != "30312d" {
+                                errors.push(ErrorArrayItem::new(
+                                    Errors::InvalidBlockData,
+                                    format!("The data given is not a valid recs sequence {}", data),
+                                ));
+
+                                let response = Message {
+                                    version: VERSION.to_owned(),
+                                    msg_type: MessageType::ErrorResponse,
+                                    payload: serde_json::json!({"Error":"The data given was not encrypted by recs"}),
+                                    error: None,
+                                };
+
+                                if let Err(err) =
+                                    send_message(&mut stream, &response, errors.clone()).uf_unwrap()
+                                {
+                                    error_vec.append(err);
+                                    error_vec.display(false);
+                                } else {
+                                    error_vec.display(false);
+                                }
+                            }
+
                             let parts: Vec<&str> = data.split('-').collect();
                             let recs_data = parts.get(0).unwrap_or(&"").to_string();
                             let recs_key = parts.get(1).unwrap_or(&"").to_string();
@@ -337,9 +370,16 @@ fn handle_client(mut stream: UnixStream, errors: ErrorArray, warnings: WarningAr
                                         thread::sleep(Duration::from_secs(TTL));
                                         // taking back ownership
                                         let (uid, gid) = get_id();
-                                        if let Err(err) = set_file_ownership(&temp_p_clone.to_path_buf(), uid, gid, ErrorArray::new_container()).uf_unwrap() {
+                                        if let Err(err) = set_file_ownership(
+                                            &temp_p_clone.to_path_buf(),
+                                            uid,
+                                            gid,
+                                            ErrorArray::new_container(),
+                                        )
+                                        .uf_unwrap()
+                                        {
                                             err.display(false);
-                                            return
+                                            return;
                                         }
                                         match del_file(
                                             temp_p_clone,
@@ -349,13 +389,9 @@ fn handle_client(mut stream: UnixStream, errors: ErrorArray, warnings: WarningAr
                                         .uf_unwrap()
                                         {
                                             Ok(_) => notice("Cleaning up temp files"),
-                                            Err(e) => {
-                                                e.display(false)
-                                            },
+                                            Err(e) => e.display(false),
                                         }
                                     });
-
-
                                 }
                                 Err(e) => {
                                     let response = Message {
@@ -386,11 +422,11 @@ fn handle_client(mut stream: UnixStream, errors: ErrorArray, warnings: WarningAr
                                         error: None,
                                     };
                                     if let Err(err) =
-                                        send_message(&mut stream, &ack, errors.clone())
-                                            .uf_unwrap()
+                                        send_message(&mut stream, &ack, errors.clone()).uf_unwrap()
                                     {
                                         err.display(false)
-                                    }                                }
+                                    }
+                                }
                                 Err(e) => {
                                     let response = Message {
                                         version: VERSION.to_owned(),
