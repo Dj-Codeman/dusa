@@ -236,7 +236,7 @@ fn handle_client(mut stream: UnixStream, mut errors: ErrorArray, warnings: Warni
                             let recs_check: &str = truncate(&data, 10);
                             let mut error_vec: ErrorArray = errors.clone();
 
-                            if recs_check.contains("30312d") {
+                            if !recs_check.contains("30312d") {
                                 errors.push(ErrorArrayItem::new(
                                     Errors::InvalidBlockData,
                                     format!("The data given is not a valid recs sequence {}", data),
