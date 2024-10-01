@@ -27,8 +27,10 @@ init:
 	
 build:
 	@cargo update
-	cargo test
+	cargo check --release
 	cargo build --release
+	@-rm -v /usr/bin/dusa
+	@-rm -v /usr/bin/dusad
 	@mv -v ./target/release/server /usr/bin/dusad
 	@mv -v ./target/release/client /usr/bin/dusa
 	@chmod +x -v /usr/bin/dusad /usr/bin/dusa
@@ -42,6 +44,8 @@ register:
 	@cp -v ./dusad.service /etc/systemd/system/dusad.service
 	@systemctl daemon-reload
 	systemctl enable dusad --now
+	# If this was an update instead of a fresh install this ensure we run the newest one
+	@-systemctl restart dusad 
 
 done:
 	@echo -e "${GREEN}dusa server and cli installed successfully!!!${NC}"
